@@ -26,24 +26,17 @@ The database holds only settings, connections, topic ids and chat names.
 
 Then send /start to the bot in a private chat to get the Console button.
 
-## Auto-deploy from GitHub (CI/CD)
-Every push to `main` deploys automatically via `.github/workflows/deploy.yml`.
+## Auto-deploy from GitHub
+This repo is connected to **Cloudflare Workers Builds** (set up from the Worker's dashboard →
+Settings → Builds → Connect to a repository). Every push to `main` triggers a build and
+`npx wrangler deploy` automatically — no GitHub Actions file needed.
 
-One-time setup:
-1. Create a Cloudflare API token: Cloudflare dashboard → My Profile → API Tokens → **Create Token** →
-   use the **"Edit Cloudflare Workers"** template (or a custom token with `Workers Scripts: Edit`,
-   `Workers KV/D1: Edit` if you also want schema changes automated, `Account Settings: Read`).
-2. In the GitHub repo: Settings → Secrets and variables → Actions → **New repository secret**
-   - Name: `CLOUDFLARE_API_TOKEN`
-   - Value: the token from step 1
-3. If your Cloudflare account ID isn't picked up automatically, also add a secret
-   `CLOUDFLARE_ACCOUNT_ID` and uncomment the `accountId` line in the workflow file.
-4. Push to `main` — the Action installs dependencies and runs `wrangler deploy`.
+Secrets (`BOT_TOKEN`, `WEBHOOK_SECRET`) are configured as build environment variables in that
+same Cloudflare setup screen (marked Encrypt), not committed to this repo.
 
-This only deploys the Worker code. Database schema changes (`schema.sql`) are not applied
-automatically — run those manually with `wrangler d1 execute` as shown above, since they can be
-destructive and shouldn't run unattended on every push. Secrets like `BOT_TOKEN` and
-`WEBHOOK_SECRET` are set once via `wrangler secret put` and are not touched by deploys.
+Database schema changes (`schema.sql`) are **not** applied automatically on deploy — run those
+manually with `wrangler d1 execute` as shown below, since they can be destructive and shouldn't
+run unattended on every push.
 
 ## Updating an existing deployment
 Re-run the schema (safe — it only adds the new `autoreplies` table, nothing is dropped):
