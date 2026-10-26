@@ -1,0 +1,8 @@
+{
+  "name": "business-backup-bot",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev", "tail": "wrangler tail" },
+  "devDependencies": { "wrangler": "^4" }
+}

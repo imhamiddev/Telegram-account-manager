@@ -1,0 +1,17 @@
+name = "business-backup-bot"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+OWNER_ID = "7654150612"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "business_bot"
+database_id = "9d0c30d0-1fc4-492a-9780-0ecdc2e84141"
+
+# Mini App static files (public/)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
