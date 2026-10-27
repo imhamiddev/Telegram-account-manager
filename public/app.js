@@ -167,6 +167,49 @@
   }
 
   // ---------- views ----------
+  // Messages-per-day bar chart + top chats. Numbers only; no message content is ever stored.
+  function activityCard() {
+    let range = 14;
+    const fmtDay = (day) => pf.format(new Date(day + "T12:00:00Z"));
+    const caption = h("div", { class: "chart-caption" }, "Tap a bar for details");
+    const chart = h("div", { class: "chart" });
+    const totals = h("div", { class: "stat-row" });
+    const top = h("div", { class: "top-list" });
+    const seg = h("div", { class: "seg" }, [7, 14, 30].map((n) =>
+      h("button", { type: "button", "data-n": String(n), "aria-pressed": String(n === range), onclick: () => load(n) }, n + "d")));
+    const stat = (label, value) => h("div", { class: "stat" }, h("b", {}, String(value)), h("span", {}, label));
+
+    async function load(n) {
+      range = n;
+      seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.n === String(n))));
+      try {
+        const d = await api("/stats?days=" + n);
+        const max = Math.max(1, ...d.days.map((x) => x.msgs));
+        chart.replaceChildren(...d.days.map((x, i) => {
+          const bar = h("button", { type: "button", class: "bar", "aria-label": `${fmtDay(x.day)}: ${x.msgs} messages`,
+            style: `--h:${x.msgs ? Math.max((x.msgs / max) * 100, 5) : 1.5}%;animation-delay:${i * 14}ms` });
+          bar.addEventListener("click", () => {
+            chart.querySelectorAll(".bar").forEach((b) => b.removeAttribute("aria-current"));
+            bar.setAttribute("aria-current", "true");
+            caption.textContent = `${fmtDay(x.day)} · ${x.msgs} messages · ${x.replies} replies · ${x.deleted} deleted`;
+          });
+          return bar;
+        }));
+        caption.textContent = "Tap a bar for details";
+        totals.replaceChildren(stat("Messages", d.totals.msgs), stat("Auto-replies", d.totals.replies), stat("Deleted", d.totals.deleted));
+        const topMax = Math.max(1, ...d.top.map((t) => t.msgs));
+        top.replaceChildren(...(d.top.length ? [h("div", { class: "label" }, "Most active chats"), ...d.top.map((t) =>
+          h("div", { class: "top-item" },
+            h("div", { class: "avatar" }, initials(t.name)),
+            h("div", { class: "grow" },
+              h("div", { class: "row between" }, h("span", { class: "name" }, t.name || "Unknown"), h("span", { class: "muted-num" }, t.msgs)),
+              h("div", { class: "top-track" }, h("div", { class: "top-bar", style: `--w:${(t.msgs / topMax) * 100}%` })))))] : [Empty("No activity yet. Counters start with the next message.")]));
+      } catch (e) { caption.textContent = e.message; }
+    }
+    load(range);
+    return Card("Activity", "Incoming messages per day", h("div", { class: "stack" }, totals, chart, caption, top), { action: seg });
+  }
+
   async function viewOverview(root) {
     const d = await api("/overview");
     themeMode = d.theme || "system"; accent = d.accent || "blue";
@@ -178,7 +221,8 @@
         h("div", { class: "row between" }, "Backup group", d.group ? Badge(d.group.title, "outline") : Badge("Not set", "destructive")),
         h("div", { class: "row between" }, "Forwarding", Badge(d.flags.backup_enabled ? "On" : "Paused", d.flags.backup_enabled ? "success" : "warning")),
         h("div", { class: "row between" }, "Topic per sender", Badge(d.flags.topics_enabled ? (d.group?.is_forum ? "On" : "Needs forum") : "Off", d.flags.topics_enabled && d.group?.is_forum ? "success" : "secondary")))),
-      Card("Privacy", null, h("p", { class: "card-description" }, "Messages are forwarded straight to the backup group. No message content is stored anywhere; the database only holds settings and the names of chats.")));
+      activityCard(),
+      Card("Privacy", null, h("p", { class: "card-description" }, "Messages are forwarded straight to the backup group. No message content is stored anywhere; the database only holds settings, chat names and activity counters (numbers only).")));
   }
 
   async function viewChats(root) {

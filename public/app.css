@@ -216,3 +216,26 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .kw-row { cursor: pointer; transition: background .15s var(--ease); }
 .kw-row:active { background: hsl(var(--accent) / .1); }
 .kw-row .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+
+/* Activity chart */
+.seg { display: inline-flex; background: hsl(var(--muted)); border-radius: 9px; padding: 2px; gap: 2px; }
+.seg button { border: 0; background: transparent; color: hsl(var(--muted-foreground)); font: inherit; font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: 7px; cursor: pointer; transition: background .15s var(--ease), color .15s var(--ease); }
+.seg button[aria-pressed="true"] { background: hsl(var(--background)); color: hsl(var(--accent)); box-shadow: 0 1px 2px hsl(240 6% 10% / .12); }
+.chart { display: flex; align-items: flex-end; gap: 3px; height: 110px; padding-top: 4px; }
+.bar { flex: 1; height: 100%; display: flex; align-items: flex-end; background: none; border: 0; padding: 0; cursor: pointer; min-width: 0; }
+.bar::before { content: ""; display: block; width: 100%; height: var(--h); background: hsl(var(--accent) / .5); border-radius: 4px 4px 2px 2px; transform-origin: bottom; animation: barGrow .5s var(--ease) both; transition: background .15s var(--ease); }
+.bar:active::before, .bar[aria-current="true"]::before { background: hsl(var(--accent)); }
+@keyframes barGrow { from { transform: scaleY(0); } }
+.chart-caption { font-size: 12px; color: hsl(var(--muted-foreground)); text-align: center; min-height: 16px; }
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { text-align: center; padding: 8px 4px; border-radius: var(--radius); background: hsl(var(--muted)); }
+.stat b { display: block; font-size: 18px; line-height: 1.2; color: hsl(var(--accent)); }
+.stat span { font-size: 11px; color: hsl(var(--muted-foreground)); }
+.top-list { display: flex; flex-direction: column; gap: 10px; }
+.top-item { display: flex; align-items: center; gap: 10px; }
+.top-item .grow { flex: 1; min-width: 0; }
+.top-item .name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.muted-num { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.top-track { height: 6px; border-radius: 3px; background: hsl(var(--muted)); margin-top: 4px; overflow: hidden; }
+.top-bar { height: 100%; width: var(--w); border-radius: 3px; background: hsl(var(--accent)); transform-origin: left; animation: growX .6s var(--ease) both; }
+@keyframes growX { from { transform: scaleX(0); } }
