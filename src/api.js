@@ -9,6 +9,13 @@ const flagsOf = (cfg) => Object.fromEntries(Object.entries(FLAGS).map(([k, d]) =
 const groupOf = (cfg) => (cfg.group_id ? { id: cfg.group_id, title: cfg.group_title || "Backup group", is_forum: cfg.group_is_forum === "1" } : null);
 const activeConnection = (env) => env.DB.prepare("SELECT id FROM connections WHERE is_enabled=1 LIMIT 1").first();
 const ACCENTS = ["red", "green", "yellow", "purple", "pink", "blue", "orange"];
+const DM_RULES = ["default", "keep", "close"];
+
+// Non-boolean settings: key -> [default, validator]. Anything not listed here cannot be written.
+const VALUES = {
+  close_dm_mode: ["all", (v) => ["all", "selected"].includes(v)],
+};
+const valuesOf = (cfg) => Object.fromEntries(Object.entries(VALUES).map(([k, [d]]) => [k, cfg[k] ?? d]));
 
 export async function handleApi(req, env, url) {
   const auth = req.headers.get("Authorization") || "";
@@ -38,7 +45,7 @@ export async function handleApi(req, env, url) {
     if (p === "/chats" && m === "GET") {
       const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 30, 1), 100);
       const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
-      const { results } = await env.DB.prepare("SELECT chat_id, name, username, muted, added FROM chats ORDER BY added DESC LIMIT ? OFFSET ?")
+      const { results } = await env.DB.prepare("SELECT chat_id, name, username, muted, added, dm_rule FROM chats ORDER BY added DESC LIMIT ? OFFSET ?")
         .bind(limit, offset).all();
       return json({ items: results, next_offset: offset + results.length, has_more: results.length === limit });
     }
@@ -48,12 +55,28 @@ export async function handleApi(req, env, url) {
       return json({ ok: true });
     }
 
+    if (p === "/chats/rule" && m === "POST") {
+      if (!DM_RULES.includes(body.rule)) return json({ error: "Unknown rule" }, 400);
+      await env.DB.prepare("UPDATE chats SET dm_rule=? WHERE chat_id=?").bind(body.rule, Number(body.chat_id)).run();
+      invalidate();
+      return json({ ok: true });
+    }
+
     if (p === "/settings" && m === "GET") {
       const cfg = await loadSettings(env);
       return json({
-        flags: flagsOf(cfg), group: groupOf(cfg),
+        flags: flagsOf(cfg), values: valuesOf(cfg), group: groupOf(cfg),
         theme: cfg.theme || "system", accent: ACCENTS.includes(cfg.accent) ? cfg.accent : "blue",
       });
+    }
+    if (p === "/settings/value" && m === "POST") {
+      const spec = VALUES[body.key];
+      if (!spec) return json({ error: "Unknown setting" }, 400);
+      const value = String(body.value ?? "").trim();
+      if (!spec[1](value)) return json({ error: "Invalid value" }, 400);
+      await setSetting(env, body.key, value);
+      invalidate();
+      return json({ ok: true });
     }
     if (p === "/settings" && m === "POST") {
       if (!(body.key in FLAGS)) return json({ error: "Unknown setting" }, 400);
