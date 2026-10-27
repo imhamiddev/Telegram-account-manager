@@ -9,7 +9,7 @@
     "tail": "wrangler tail",
     "db:migrate": "wrangler d1 migrations apply business_bot --remote",
     "db:migrate:local": "wrangler d1 migrations apply business_bot --local",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "devDependencies": {
     "wrangler": "^4"
