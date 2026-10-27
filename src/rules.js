@@ -45,3 +45,57 @@ export function scheduleActive(cfg, feature, now = new Date()) {
   const end = isValidHM(cfg.sched_end) ? cfg.sched_end : "00:00";
   return inWindow(start, end, minutesInZone(now, cfg.tz || "Asia/Tehran"));
 }
+
+// ---------- auto-reply matching ----------
+const MATCH_TYPES = ["exact", "contains", "regex"];
+export const isMatchType = (v) => MATCH_TYPES.includes(v);
+
+/**
+ * Reject regexes that are likely to backtrack catastrophically (ReDoS) or are just too big.
+ * Conservative on purpose: a nested quantifier like (a+)+ is refused.
+ */
+export function isSafeRegex(pattern) {
+  const p = String(pattern ?? "");
+  if (!p || p.length > 100) return false;
+  if (/\([^)]*[+*}][^)]*\)\s*[+*{]/.test(p)) return false; // nested quantifiers
+  if (/\\[1-9]/.test(p)) return false;                      // back-references
+  try { new RegExp(p, "iu"); return true; } catch { return false; }
+}
+
+/** Prepare DB rows for matching: compile regexes once, order exact -> contains -> regex. */
+export function buildRules(rows) {
+  const order = { exact: 0, contains: 1, regex: 2 };
+  return rows
+    .map((r) => {
+      const type = isMatchType(r.match_type) ? r.match_type : "exact";
+      let re = null;
+      if (type === "regex") {
+        if (!isSafeRegex(r.keyword)) return null; // ignore unsafe/broken rules instead of crashing
+        re = new RegExp(r.keyword, "iu");
+      }
+      return { ...r, match_type: type, re };
+    })
+    .filter(Boolean)
+    .sort((a, b) => order[a.match_type] - order[b.match_type]);
+}
+
+/**
+ * First rule that matches `text`.
+ *  exact    -> the whole trimmed message equals the keyword (case-insensitive)
+ *  contains -> the message includes the keyword (case-insensitive)
+ *  regex    -> the pattern matches (case-insensitive, first 500 chars only)
+ */
+export function matchAutoreply(rules, text) {
+  const t = String(text ?? "").trim();
+  if (!t) return null;
+  const lower = t.toLowerCase();
+  for (const r of rules) {
+    if (r.match_type === "exact" && lower === r.keyword) return r;
+    if (r.match_type === "contains" && lower.includes(r.keyword)) return r;
+    if (r.match_type === "regex" && r.re.test(t.slice(0, 500))) return r;
+  }
+  return null;
+}
+
+/** Seconds timestamp before which a person must not trigger the same keyword again. */
+export const cooldownCutoff = (nowSec, cooldownMin) => nowSec - Math.max(0, Number(cooldownMin) || 0) * 60;
