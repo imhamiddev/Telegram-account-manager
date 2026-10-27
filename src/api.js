@@ -4,16 +4,21 @@ import { invalidate } from "./backup.js";
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
-const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0" };
+const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_enabled: "0", sched_close_dm: "1", sched_autoreply: "1" };
 const flagsOf = (cfg) => Object.fromEntries(Object.entries(FLAGS).map(([k, d]) => [k, (cfg[k] ?? d) === "1"]));
 const groupOf = (cfg) => (cfg.group_id ? { id: cfg.group_id, title: cfg.group_title || "Backup group", is_forum: cfg.group_is_forum === "1" } : null);
 const activeConnection = (env) => env.DB.prepare("SELECT id FROM connections WHERE is_enabled=1 LIMIT 1").first();
 const ACCENTS = ["red", "green", "yellow", "purple", "pink", "blue", "orange"];
 const DM_RULES = ["default", "keep", "close"];
+const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const validTz = (v) => { try { new Intl.DateTimeFormat("en", { timeZone: v }); return true; } catch { return false; } };
 
 // Non-boolean settings: key -> [default, validator]. Anything not listed here cannot be written.
 const VALUES = {
   close_dm_mode: ["all", (v) => ["all", "selected"].includes(v)],
+  sched_start: ["22:00", (v) => HM.test(v)],
+  sched_end: ["07:00", (v) => HM.test(v)],
+  tz: ["Asia/Tehran", validTz],
 };
 const valuesOf = (cfg) => Object.fromEntries(Object.entries(VALUES).map(([k, [d]]) => [k, cfg[k] ?? d]));
 

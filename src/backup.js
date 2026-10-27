@@ -1,5 +1,5 @@
 import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec } from "./lib.js";
-import { shouldCloseDm } from "./rules.js";
+import { shouldCloseDm, scheduleActive } from "./rules.js";
 
 // ---------- in-memory state cache (keeps the hot path free of DB reads) ----------
 let cache = null, cacheAt = 0;
@@ -172,7 +172,7 @@ export async function onBusinessMessage(env, m, edited) {
 
   // Auto-reply: exact-match keyword, sent via the business connection so it appears from the owner's account.
   if (!edited) {
-    const reply = matchAutoreply(st, m.text);
+    const reply = scheduleActive(st.cfg, "autoreply") ? matchAutoreply(st, m.text) : null;
     if (reply) {
       tasks.push(
         tgStrict(env, "sendMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, text: reply })
@@ -181,7 +181,7 @@ export async function onBusinessMessage(env, m, edited) {
   }
 
   // Close DM: delete the incoming message for both sides immediately after it's handled above.
-  if (shouldCloseDm(st.cfg, chat)) {
+  if (shouldCloseDm(st.cfg, chat) && scheduleActive(st.cfg, "close_dm")) {
     tasks.push(
       tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
         .catch((e) => notifyOwner(env, `Close DM: couldn't delete a message (${e.message})`)));
