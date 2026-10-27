@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-label="Business Backup Bot">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#141b34"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#60a5fa">
+        <animate attributeName="stop-color" values="#60a5fa;#c084fc;#f472b6;#fb923c;#facc15;#4ade80;#60a5fa" dur="14s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="1" stop-color="#c084fc">
+        <animate attributeName="stop-color" values="#c084fc;#f472b6;#fb923c;#facc15;#4ade80;#60a5fa;#c084fc" dur="14s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="1.2"/></filter>
+  </defs>
+
+  <rect width="1200" height="340" rx="22" fill="url(#bg)"/>
+
+  <!-- drifting glow blobs -->
+  <circle cx="180" cy="90" r="160" fill="url(#glow)">
+    <animate attributeName="cx" values="180;260;180" dur="9s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="90;140;90" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="1020" cy="260" r="190" fill="url(#glow)">
+    <animate attributeName="cx" values="1020;940;1020" dur="11s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="260;200;260" dur="11s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- floating accent dots -->
+  <g filter="url(#soft)" opacity=".9">
+    <circle cx="90"  cy="270" r="7" fill="#ef4444"><animate attributeName="cy" values="270;250;270" dur="4s" repeatCount="indefinite"/></circle>
+    <circle cx="140" cy="300" r="5" fill="#f97316"><animate attributeName="cy" values="300;282;300" dur="5s" repeatCount="indefinite"/></circle>
+    <circle cx="1110" cy="70"  r="7" fill="#9333ea"><animate attributeName="cy" values="70;90;70" dur="4.5s" repeatCount="indefinite"/></circle>
+    <circle cx="1060" cy="40"  r="5" fill="#ec4899"><animate attributeName="cy" values="40;58;40" dur="5.5s" repeatCount="indefinite"/></circle>
+    <circle cx="1130" cy="300" r="6" fill="#16a34a"><animate attributeName="cy" values="300;282;300" dur="6s" repeatCount="indefinite"/></circle>
+    <circle cx="60"  cy="60"  r="6" fill="#eab308"><animate attributeName="cy" values="60;80;60" dur="5s" repeatCount="indefinite"/></circle>
+  </g>
+
+  <!-- shield + check icon -->
+  <g transform="translate(540 38)">
+    <path d="M60 0 L112 18 V62 C112 96 90 118 60 130 C30 118 8 96 8 62 V18 Z" fill="#1e2a52" stroke="#60a5fa" stroke-width="3">
+      <animate attributeName="stroke" values="#60a5fa;#c084fc;#f472b6;#fb923c;#facc15;#4ade80;#60a5fa" dur="14s" repeatCount="indefinite"/>
+    </path>
+    <path d="M36 66 L54 84 L88 46" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="90" stroke-dashoffset="90">
+      <animate attributeName="stroke-dashoffset" values="90;0;0;90" keyTimes="0;0.25;0.85;1" dur="5s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <text x="600" y="224" text-anchor="middle" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="58" font-weight="800" fill="url(#title)" letter-spacing="-1">Business Backup Bot</text>
+  <text x="600" y="266" text-anchor="middle" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="21" fill="#94a3b8">Telegram Business · Cloudflare Workers · D1 · Mini App</text>
+
+  <!-- scanning line -->
+  <rect x="0" y="0" width="1200" height="3" fill="#60a5fa" opacity=".25">
+    <animate attributeName="y" values="0;337;0" dur="7s" repeatCount="indefinite"/>
+  </rect>
+</svg>

@@ -1,0 +1,369 @@
+<a id="readme-top"></a>
+
+<div align="center">
+
+<img src="assets/hero.svg" alt="Business Backup Bot" width="100%"/>
+
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)
+![D1](https://img.shields.io/badge/D1_SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![Telegram Business](https://img.shields.io/badge/Telegram_Business-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)
+![JavaScript](https://img.shields.io/badge/Vanilla_JS-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+![No message storage](https://img.shields.io/badge/Messages_stored-0-22c55e?style=for-the-badge)
+
+[English](README.md) · **فارسی**
+
+[قابلیت‌ها](#-قابلیتها) · [پیش‌نمایش](#-پیشنمایش) · [نحوه کار](#-نحوه-کار) · [راه‌اندازی](#-راهاندازی-سریع) · [دیپلوی خودکار](#-دیپلوی-خودکار) · [دیتابیس](#-دیتابیس) · [سوالات متداول](#-سوالات-متداول)
+
+</div>
+
+---
+
+<div dir="rtl">
+
+## ✨ این پروژه چیه؟
+
+یک **ربات خصوصی تلگرام بیزینس** که فقط برای صاحب اکانت کار می‌کنه. همه پیام‌های خصوصی دریافتی اکانتت رو بی‌سروصدا توی یه گروه بکاپ کپی می‌کنه و یه **کنسول Mini App** شیک بهت میده که از داخل خود تلگرام کنترلش کنی.
+
+کل پروژه روی **Cloudflare Workers + D1** اجرا میشه. یعنی سرور نداره که مراقبش باشی و **هیچ‌وقت محتوای پیام‌ها رو ذخیره نمی‌کنه**. پیام‌ها مستقیم به گروهت فوروارد میشن و دیتابیس فقط تنظیمات، آیدی تاپیک‌ها و اسم چت‌ها رو نگه می‌داره.
+
+> [!NOTE]
+> همه‌چیز **فقط برای `OWNER_ID`** کار می‌کنه (توی `wrangler.toml` تنظیم میشه). هیچ‌کس دیگه‌ای نمی‌تونه از ربات یا کنسول استفاده کنه.
+
+## 🚀 قابلیت‌ها
+
+| | قابلیت | توضیح |
+|---|---|---|
+| 🗂️ | **بکاپ پیام‌ها** | هر پیام خصوصی دریافتی به گروه بکاپ فوروارد میشه (`/setgr`) |
+| ✏️ | **ویرایش و حذف** | پیام ویرایش‌شده با برچسب دوباره ارسال میشه و برای پیام حذف‌شده اعلان میاد |
+| 🧵 | **تاپیک برای هر فرستنده** | اختیاری: برای هر نفر یک تاپیک جدا، تا گروه مرتب بمونه |
+| 🔒 | **بستن پیوی** | با یک کلید، هر پیام خصوصی دریافتی **از دو طرف** بلافاصله پاک میشه |
+| 💬 | **ریپلای خودکار** | یه کلمه و یه متن پاسخ تنظیم می‌کنی. اگه کسی **دقیقاً** همون کلمه رو فرستاد، ربات از اکانت خودت جواب میده |
+| 🔇 | **میوت هر چت** | بکاپ رو برای چت‌های مشخص خاموش کن |
+| ♾️ | **لودینگ تدریجی چت‌ها** | لیست چت‌ها با اسکرول، ۳۰ تا ۳۰ تا لود میشه، پس با هزاران چت هم سریع می‌مونه |
+| 🌗 | **تم روشن / تاریک / سیستم** | انتخاب دستی تم که روی سرور ذخیره میشه |
+| 🎨 | **۷ رنگ accent** | قرمز، سبز، زرد، بنفش، صورتی، آبی، نارنجی. فقط accent، نه بک‌گراند |
+| 🫧 | **UI نرم و روان** | انیمیشن جابه‌جایی صفحه‌ها، کلیدهای فنری، بازخورد لمس، شیت‌های لغزنده و توست. احترام به تنظیم *reduced motion* |
+
+## 📱 پیش‌نمایش
+
+<div align="center">
+<table>
+<tr>
+<td align="center" width="420">
+
+<img src="assets/console-preview.svg" alt="پیش‌نمایش انیمیشنی کنسول" width="300"/>
+
+<sub>رنگ accent بین هر ۷ پریست می‌چرخه</sub>
+
+</td>
+<td valign="top" dir="rtl">
+
+**تب‌های کنسول**
+
+- **Overview**: وضعیت زنده، گروه، هشدارها
+- **Chats**: جستجو، میوت/آنمیوت، اسکرول بی‌نهایت
+- **Account**: وضعیت اتصال و دسترسی‌های داده‌شده
+- **Settings**: تم، accent، بستن پیوی، تاپیک‌ها، ریپلای‌های خودکار
+
+<br/>
+
+**پالت رنگی**
+
+🔴 قرمز &nbsp; 🟢 سبز &nbsp; 🟡 زرد &nbsp; 🟣 بنفش<br/>
+🩷 صورتی &nbsp; 🔵 آبی &nbsp; 🟠 نارنجی
+
+</td>
+</tr>
+</table>
+</div>
+
+## 🧠 نحوه کار
+
+### معماری
+
+</div>
+
+```mermaid
+flowchart LR
+    U([👤 یکی بهت پیام میده]) --> TG[Telegram Business API]
+    TG -- webhook --> W{{⚡ Cloudflare Worker}}
+    W <--> DB[(🗄️ D1<br/>تنظیمات · چت‌ها · کلمه‌ها)]
+    W -- فوروارد --> G[💬 گروه بکاپ]
+    W -- ریپلای / حذف --> TG
+    You([🧑‍💻 تو]) -- باز می‌کنی --> MA[📱 Mini App]
+    MA -- REST + احراز initData --> W
+
+    classDef edge fill:#1e293b,stroke:#60a5fa,color:#e2e8f0;
+    classDef core fill:#312e81,stroke:#a78bfa,color:#fff;
+    class TG,G,MA edge;
+    class W core;
+```
+
+<div dir="rtl">
+
+### با هر پیام دریافتی چه اتفاقی میفته؟
+
+</div>
+
+```mermaid
+flowchart TD
+    A([📩 پیام بیزینس میرسه]) --> B{از اتصال<br/>تو؟}
+    B -- نه --> X1[🚫 نادیده]
+    B -- آره --> C{خودت فرستادی؟}
+    C -- آره --> X2[🚫 نادیده]
+    C -- نه --> D{چت میوته؟}
+    D -- آره --> X3[🔇 همه‌چیز رد میشه]
+    D -- نه --> E[🗂️ فوروارد به گروه بکاپ<br/>اگه بکاپ روشنه]
+    E --> F{کلمه دقیقاً<br/>مطابقت داره؟}
+    F -- آره --> G[💬 ارسال ریپلای خودکار<br/>از اکانت تو]
+    F -- نه --> H
+    G --> H{🔒 بستن پیوی روشنه؟}
+    H -- آره --> I[🗑️ حذف از دو طرف]
+    H -- نه --> J([✅ تمام])
+    I --> J
+```
+
+<div dir="rtl">
+
+### توالی پیام‌ها
+
+</div>
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as 👤 فرستنده
+    participant T as تلگرام
+    participant W as ⚡ ورکر
+    participant D as 🗄️ D1
+    participant G as 💬 گروه بکاپ
+
+    S->>T: "سلام"
+    T->>W: webhook (business_message)
+    W->>D: خواندن تنظیمات و کلمه‌ها (کش)
+    par بکاپ
+        W->>G: فوروارد پیام
+    and ریپلای خودکار
+        W->>T: sendMessage "علیک سلام"
+    and بستن پیوی
+        W->>T: deleteMessage
+    end
+    T-->>S: جواب میرسه، پیام اصلی پاک شده
+```
+
+<div dir="rtl">
+
+### یه نگاه کلی
+
+</div>
+
+```mermaid
+mindmap
+  root((Backup Bot))
+    بکاپ
+      فوروارد پیوی
+      ویرایش و حذف
+      تاپیک برای هر فرستنده
+      میوت هر چت
+    اتوماسیون
+      ریپلای خودکار
+        فقط کلمه دقیق
+      بستن پیوی
+        حذف از دو طرف
+    کنسول
+      تم روشن و تاریک
+      ۷ رنگ accent
+      لودینگ تدریجی
+      انیمیشن
+    پلتفرم
+      Cloudflare Workers
+      مایگریشن D1
+      Workers Builds
+```
+
+<div dir="rtl">
+
+## ⚡ راه‌اندازی سریع
+
+<details open>
+<summary><b>تنظیم اولیه (PowerShell)</b></summary>
+
+<div dir="ltr">
+
+```powershell
+npm install
+npx wrangler login
+npx wrangler d1 create business_bot        # database_id رو توی wrangler.toml بذار (اگه قبلاً داری رد شو)
+npm run db:migrate                          # همه فایل‌های migrations/ رو به ترتیب اجرا می‌کنه
+npx wrangler secret put BOT_TOKEN
+npx wrangler secret put WEBHOOK_SECRET
+npx wrangler deploy
+.\set-webhook.ps1 -BotToken "<TOKEN>" -WorkerUrl "https://<worker>.workers.dev" -Secret "<WEBHOOK_SECRET>"
+```
+
+</div>
+
+بعدش توی چت خصوصی با ربات `/start` بزن تا دکمه **Console** رو بگیری.
+
+</details>
+
+### اتصال اکانت بیزینس
+
+1. تلگرام ← **Settings ← Business ← Chatbots** ← ربات رو اضافه کن.
+2. دسترسی‌های لازم رو بده (**reply** برای ریپلای خودکار، **delete messages** برای بستن پیوی).
+3. ربات رو توی گروه بکاپ اضافه کن و همونجا `/setgr` بزن.
+
+### دستورها
+
+| کجا | دستور | کارش |
+|---|---|---|
+| چت خصوصی | `/start` | دکمه Console رو باز می‌کنه |
+| چت خصوصی | `/status` | وضعیت فعلی رو نشون میده |
+| گروه بکاپ | `/setgr` | اون گروه رو مقصد بکاپ می‌کنه |
+
+> [!IMPORTANT]
+> **بستن پیوی به دسترسی «delete messages»** روی اتصال بیزینس نیاز داره و فقط توی بازه حذف ۴۸ ساعته تلگرام کار می‌کنه. اگه این دسترسی نباشه، ربات بهت هشدار میده و بی‌صدا شکست نمی‌خوره (حداکثر یک هشدار در دقیقه).
+
+> [!WARNING]
+> **چت‌های میوت‌شده کلاً رد میشن.** چت میوت‌شده نه بکاپ میشه، نه ریپلای خودکار می‌گیره و نه با بستن پیوی پاک میشه.
+
+## 🔁 دیپلوی خودکار
+
+این ریپو به **Cloudflare Workers Builds** وصله. با هر پوش روی `main`، پروژه بیلد و با `npx wrangler deploy` دیپلوی میشه. نیازی به فایل GitHub Actions نیست.
+
+</div>
+
+```mermaid
+flowchart LR
+    A[💻 git push main] --> B[(GitHub)]
+    B -- webhook --> C[🏗️ Workers Builds]
+    C --> D[npx wrangler deploy]
+    D --> E([🟢 ورکر زنده])
+```
+
+<div dir="rtl">
+
+سکرت‌ها (`BOT_TOKEN` و `WEBHOOK_SECRET`) توی Cloudflare نگه‌داری میشن (متغیرهای بیلد با تیک *Encrypt*) و هیچ‌وقت توی این ریپو نیستن.
+
+## 🗄️ دیتابیس
+
+اسکیمای دیتابیس توی پوشه [`migrations/`](migrations) به‌صورت فایل‌های SQL شماره‌دار نگه‌داری میشه (مایگریشن‌های native خود Wrangler برای D1). Wrangler توی جدول `d1_migrations` ثبت می‌کنه چی قبلاً اجرا شده، پس اجرای دوباره همیشه امنه.
+
+</div>
+
+```mermaid
+erDiagram
+    SETTINGS {
+        TEXT key PK
+        TEXT value
+    }
+    CONNECTIONS {
+        TEXT id PK
+        INTEGER is_enabled
+    }
+    CHATS {
+        INTEGER chat_id PK
+        TEXT name
+        TEXT username
+        INTEGER muted
+        INTEGER added
+    }
+    TOPICS {
+        INTEGER group_id PK
+        INTEGER chat_id PK
+        INTEGER thread_id
+    }
+    AUTOREPLIES {
+        TEXT keyword PK
+        TEXT reply
+    }
+    CHATS ||--o{ TOPICS : "has topic per group"
+```
+
+<div dir="rtl">
+
+| دستور | کاربرد |
+|---|---|
+| `npm run db:migrate` | اجرای مایگریشن‌های جدید روی دیتابیس **اصلی** |
+| `npm run db:migrate:local` | اجرا روی دیتابیس لوکال برای تست |
+
+برای تغییر اسکیما، فایل `migrations/0003_something.sql` رو بساز و `npm run db:migrate` رو بزن. مایگریشنی که یک بار اجرا شده رو هیچ‌وقت ویرایش نکن.
+
+> [!NOTE]
+> مایگریشن‌ها عمداً **موقع دیپلوی خودکار اجرا نمیشن**. تغییر اسکیما روی داده واقعی باید یه کار آگاهانه باشه.
+
+## 🧰 تکنولوژی‌ها
+
+| لایه | انتخاب |
+|---|---|
+| اجرا | Cloudflare Workers |
+| دیتابیس | Cloudflare D1 (SQLite) |
+| فرانت‌اند | Mini App با Vanilla JS، بدون build، توکن‌های سبک shadcn/ui |
+| احراز هویت | `initData` تلگرام، فقط مالک |
+| CI/CD | Cloudflare Workers Builds |
+
+<details>
+<summary><b>📁 ساختار ریپو</b></summary>
+
+<div dir="ltr">
+
+```text
+.
+├── src/
+│   ├── index.js        # ورودی webhook و دستورها
+│   ├── backup.js       # فوروارد، ریپلای خودکار، بستن پیوی
+│   ├── api.js          # REST API مینی‌اپ
+│   └── lib.js          # ابزارهای تلگرام و فرمت‌دهی
+├── public/             # Mini App (index.html, app.js, app.css)
+├── assets/             # تصاویر README (SVG انیمیشنی)
+├── migrations/         # مایگریشن‌های D1 (0001, 0002, ...)
+├── db-legacy/          # فایل‌های قدیمی اسکیما، فقط برای مرجع
+├── wrangler.toml
+└── set-webhook.ps1
+```
+
+</div>
+
+</details>
+
+## ❓ سوالات متداول
+
+<details>
+<summary><b>پیام‌هام ذخیره میشن؟</b></summary>
+
+نه. پیام‌ها به گروهت فوروارد میشن و هیچ‌وقت توی دیتابیس نوشته نمیشن. D1 فقط تنظیمات، اتصال‌ها، آیدی تاپیک‌ها و اسم چت‌ها رو نگه می‌داره.
+
+</details>
+
+<details>
+<summary><b>ریپلای خودکار دقیقاً چطوری تطبیق میده؟</b></summary>
+
+**کل پیام** (بعد از حذف فاصله‌های ابتدا و انتها و بدون حساسیت به بزرگی/کوچکی حروف) باید دقیقاً برابر کلمه تنظیم‌شده باشه. اگه `سلام` ← `علیک سلام` رو تنظیم کنی، پیام `سلام` فعالش می‌کنه ولی `سلام چطوری` نه.
+
+</details>
+
+<details>
+<summary><b>تغییر تنظیمات دیر اعمال میشه.</b></summary>
+
+ورکر برای سرعت، تنظیمات رو کوتاه‌مدت کش می‌کنه. تغییرات حدود ۱۵ ثانیه‌ای اعمال میشن.
+
+</details>
+
+<details>
+<summary><b>اینکه <code>OWNER_ID</code> و <code>database_id</code> توی <code>wrangler.toml</code> هستن امنه؟</b></summary>
+
+آره. این‌ها شناسه‌ان نه رمز. سکرت‌های واقعی (`BOT_TOKEN` و `WEBHOOK_SECRET`) به‌صورت Cloudflare secret نگه‌داری میشن.
+
+</details>
+
+---
+
+<div align="center">
+
+ساخته‌شده با ☕ توسط [@imhamiddev](https://github.com/imhamiddev)
+
+<a href="#readme-top">↑ بازگشت به بالا</a>
+
+</div>
+
+</div>
