@@ -99,3 +99,19 @@ export function matchAutoreply(rules, text) {
 
 /** Seconds timestamp before which a person must not trigger the same keyword again. */
 export const cooldownCutoff = (nowSec, cooldownMin) => nowSec - Math.max(0, Number(cooldownMin) || 0) * 60;
+
+// ---------- stats helpers ----------
+/** YYYY-MM-DD for `date` in time zone `tz`. */
+export function dayKey(date, tz = "Asia/Tehran") {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+/** The last `n` day keys ending today (oldest first, no duplicates even across DST changes). */
+export function lastDays(n, tz = "Asia/Tehran", now = new Date()) {
+  const out = [];
+  for (let i = n + 1; i >= 0 && out.length < n + 2; i--) {
+    const k = dayKey(new Date(now.getTime() - i * 86400000), tz);
+    if (!out.includes(k)) out.push(k);
+  }
+  return out.slice(-n);
+}
