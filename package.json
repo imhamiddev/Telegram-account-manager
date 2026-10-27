@@ -3,6 +3,12 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev", "tail": "wrangler tail" },
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "db:migrate": "wrangler d1 migrations apply business_bot --remote",
+    "db:migrate:local": "wrangler d1 migrations apply business_bot --local"
+  },
   "devDependencies": { "wrangler": "^4" }
 }

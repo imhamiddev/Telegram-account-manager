@@ -9,6 +9,7 @@ OWNER_ID = "7654150612"
 binding = "DB"
 database_name = "business_bot"
 database_id = "9d0c30d0-1fc4-492a-9780-0ecdc2e84141"
+migrations_dir = "migrations"
 
 # Mini App static files (public/)
 [assets]

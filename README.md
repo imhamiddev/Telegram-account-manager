@@ -17,14 +17,29 @@ The database holds only settings, connections, topic ids and chat names.
     npm install
     npx wrangler login
     npx wrangler d1 create business_bot          # put database_id in wrangler.toml (skip if you already have it)
-    npx wrangler d1 execute business_bot --remote --file=schema.sql
-    npx wrangler d1 execute business_bot --remote --file=cleanup.sql   # only if you used the previous archive version
+    npm run db:migrate                            # applies everything in migrations/, in order
     npx wrangler secret put BOT_TOKEN
     npx wrangler secret put WEBHOOK_SECRET
     npx wrangler deploy
     .\set-webhook.ps1 -BotToken "<TOKEN>" -WorkerUrl "https://<worker>.workers.dev" -Secret "<WEBHOOK_SECRET>"
 
 Then send /start to the bot in a private chat to get the Console button.
+
+## Database migrations
+Schema lives in `migrations/`, as numbered, one-way SQL files (Wrangler's native D1 migrations —
+`wrangler.toml` points at this folder via `migrations_dir`). Wrangler tracks which files have
+already run in a `d1_migrations` table inside the database itself, so re-running is always safe:
+already-applied files are skipped automatically.
+
+- Apply to the live (remote) database:  `npm run db:migrate`
+- Apply to a local dev database:        `npm run db:migrate:local`
+
+To add a new table or column later, add a new file `migrations/0003_whatever.sql` (next number,
+short name) and run `npm run db:migrate` again — don't edit old migration files once they've been
+applied anywhere.
+
+`db-legacy/` holds the old hand-run `schema.sql` / `cleanup.sql` from before this project used
+Wrangler migrations. They're kept only for reference and are not used by anything anymore.
 
 ## Auto-deploy from GitHub
 This repo is connected to **Cloudflare Workers Builds** (set up from the Worker's dashboard →
@@ -34,14 +49,14 @@ Settings → Builds → Connect to a repository). Every push to `main` triggers 
 Secrets (`BOT_TOKEN`, `WEBHOOK_SECRET`) are configured as build environment variables in that
 same Cloudflare setup screen (marked Encrypt), not committed to this repo.
 
-Database schema changes (`schema.sql`) are **not** applied automatically on deploy — run those
-manually with `wrangler d1 execute` as shown below, since they can be destructive and shouldn't
+Database migrations are **not** applied automatically on deploy — run `npm run db:migrate`
+yourself after pulling a change that adds a new migration file, since schema changes shouldn't
 run unattended on every push.
 
 ## Updating an existing deployment
-Re-run the schema (safe — it only adds the new `autoreplies` table, nothing is dropped):
+After pulling new migration files, apply them once:
 
-    npx wrangler d1 execute business_bot --remote --file=schema.sql
+    npm run db:migrate
 
 ### Notes on Close DM
 Deleting a business message requires the delete-messages permission on the Telegram Business connection
