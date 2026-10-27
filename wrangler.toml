@@ -11,6 +11,10 @@ database_name = "business_bot"
 database_id = "9d0c30d0-1fc4-492a-9780-0ecdc2e84141"
 migrations_dir = "migrations"
 
+# Lets the console show which version is deployed (id + deploy time)
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
 # Mini App static files (public/)
 [assets]
 directory = "./public"
