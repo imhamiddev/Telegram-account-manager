@@ -280,11 +280,45 @@
 
   async function viewAutoreplies(root) {
     const d = await api("/autoreplies");
+    const MATCH = [["exact", "Exact word"], ["contains", "Contains word"], ["regex", "Regex"]];
+    const MEDIA = [["", "No media"], ["photo", "Photo"], ["document", "File"], ["video", "Video"]];
+    const MLABEL = { exact: "Exact", contains: "Contains", regex: "Regex" };
+    const MEDIA_LABEL = { photo: "Photo", document: "File", video: "Video" };
+
+    const kwInput = h("input", { class: "input", placeholder: "Keyword, e.g. سلام" });
+    const rpInput = h("textarea", { class: "input textarea", rows: "3", placeholder: "Reply text, e.g. علیک سلام" });
+    const cdInput = h("input", { class: "input", type: "number", min: "0", max: "10080", placeholder: "0 = no cooldown" });
+    const urlInput = h("input", { class: "input", placeholder: "https://… direct link to the image/file" });
+    const matchSel = Select(MATCH, "exact", () => hint());
+    const mediaSel = Select(MEDIA, "", () => { urlField.style.display = mediaSel.value ? "" : "none"; });
+    const hintEl = h("p", { class: "card-description" });
+    const HINTS = {
+      exact: "Replies only when the whole message is exactly this word.",
+      contains: "Replies when the message contains this word anywhere.",
+      regex: "Advanced: a regular expression, e.g. ^order\\s*#?\\d+$ (case-insensitive).",
+    };
+    function hint() { hintEl.textContent = HINTS[matchSel.value]; }
+    hint();
+    const urlField = Field("Media link", urlInput);
+    urlField.style.display = "none";
+
     const list = h("div", { class: "list" });
+    function edit(r) {
+      kwInput.value = r.keyword; rpInput.value = r.reply; cdInput.value = r.cooldown_min || "";
+      matchSel.value = r.match_type || "exact"; mediaSel.value = r.media_type || ""; urlInput.value = r.media_url || "";
+      urlField.style.display = mediaSel.value ? "" : "none"; hint();
+      root.closest(".sheet")?.scrollTo({ top: 0, behavior: "smooth" });
+    }
     function draw() {
       list.replaceChildren(...(d.items.length ? d.items.map((r) =>
-        h("div", { class: "kw-row" },
-          h("div", { class: "body" }, h("div", { class: "kw" }, r.keyword), h("div", { class: "rp" }, r.reply)),
+        h("div", { class: "kw-row", onclick: () => edit(r) },
+          h("div", { class: "body" },
+            h("div", { class: "kw" + (r.match_type === "regex" ? " mono" : "") }, r.keyword),
+            h("div", { class: "rp" }, r.reply),
+            h("div", { class: "badges" },
+              Badge(MLABEL[r.match_type] || "Exact", "secondary"),
+              r.cooldown_min > 0 && Badge("⏱ " + r.cooldown_min + " min", "outline"),
+              r.media_type && Badge("📎 " + (MEDIA_LABEL[r.media_type] || r.media_type), "outline"))),
           Btn("", { variant: "ghost", size: "sm", ic: "trash", onclick: async () => {
             await api("/autoreplies/delete", { method: "POST", body: { keyword: r.keyword } });
             d.items = d.items.filter((x) => x.keyword !== r.keyword);
@@ -292,24 +326,28 @@
           } }))) : [Empty("No auto-replies yet.")]));
     }
     draw();
-    const kwInput = h("input", { class: "input", placeholder: "Exact keyword, e.g. سلام" });
-    const rpInput = h("input", { class: "input", placeholder: "Reply text, e.g. علیک سلام" });
     root.replaceChildren(
-      h("p", { class: "card-description" }, "When someone sends exactly this word (nothing else), the bot replies instantly from your account."),
-      Card("Add keyword", null, h("div", { class: "stack" },
-        Field("Keyword (exact match)", kwInput),
+      h("p", { class: "card-description" }, "When a message matches, the bot replies instantly from your account. Tap a rule to edit it."),
+      Card("Add or edit a rule", null, h("div", { class: "stack" },
+        Field("Match type", matchSel), hintEl,
+        Field("Keyword", kwInput),
         Field("Reply", rpInput),
-        Btn("Add", { ic: "plus", block: true, onclick: async () => {
+        Field("Cooldown (minutes, per person)", cdInput),
+        Field("Attach", mediaSel),
+        urlField,
+        Btn("Save rule", { ic: "plus", block: true, onclick: async () => {
           const keyword = kwInput.value.trim(), reply = rpInput.value.trim();
-          if (!keyword || !reply) return toast("Fill in both fields", "error");
-          await api("/autoreplies", { method: "POST", body: { keyword, reply } });
-          const existing = d.items.find((x) => x.keyword === keyword.toLowerCase());
-          if (existing) existing.reply = reply; else d.items.push({ keyword: keyword.toLowerCase(), reply });
-          d.items.sort((a, b) => a.keyword.localeCompare(b.keyword));
-          kwInput.value = ""; rpInput.value = "";
+          if (!keyword || !reply) return toast("Fill in the keyword and the reply", "error");
+          const body = { keyword, reply, match_type: matchSel.value, cooldown_min: Number(cdInput.value) || 0, media_type: mediaSel.value || null, media_url: urlInput.value.trim() || null };
+          await api("/autoreplies", { method: "POST", body });
+          const key = body.match_type === "regex" ? keyword : keyword.toLowerCase();
+          const row = { keyword: key, reply, match_type: body.match_type, cooldown_min: body.cooldown_min, media_type: body.media_type, media_url: body.media_url };
+          const i = d.items.findIndex((x) => x.keyword === key);
+          if (i >= 0) d.items[i] = row; else d.items.push(row);
+          kwInput.value = ""; rpInput.value = ""; cdInput.value = ""; urlInput.value = ""; mediaSel.value = ""; urlField.style.display = "none";
           toast("Saved"); draw();
         } }))),
-      Card("Your keywords", null, list, { flush: true }));
+      Card("Your rules", null, list, { flush: true }));
   }
 
   // Close DM / auto-reply only run inside this daily window (can wrap past midnight, e.g. 22:00 to 07:00)
