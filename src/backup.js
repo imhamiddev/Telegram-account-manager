@@ -38,9 +38,19 @@ export async function isOwnerConnection(env, st, id) {
   return false;
 }
 
-// ---------- notifying the owner about problems (at most once a minute) ----------
+// ---------- problems: always logged to D1 (shown in the console), owner pinged at most once a minute ----------
+export async function logError(env, scope, message) {
+  try {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO error_log(at,scope,message) VALUES(?,?,?)").bind(nowSec(), scope, String(message ?? "").slice(0, 300)),
+      env.DB.prepare("DELETE FROM error_log WHERE id NOT IN (SELECT id FROM error_log ORDER BY id DESC LIMIT 50)"),
+    ]);
+  } catch { /* logging must never break message handling */ }
+}
+
 let lastNotify = 0;
-export async function notifyOwner(env, text) {
+export async function notifyOwner(env, text, scope = "general") {
+  await logError(env, scope, text);
   if (Date.now() - lastNotify < 60000) return;
   lastNotify = Date.now();
   await tg(env, "sendMessage", { chat_id: env.OWNER_ID, text: `⚠️ ${text}` });
@@ -180,7 +190,7 @@ export async function onBusinessMessage(env, m, edited) {
     const x = extract(m);
     tasks.push(
       deliver(env, st, m.chat.id, { ...x, name, username, unix: m.edit_date || m.date, label: edited ? "✏️ Edited\n" : "" })
-        .catch((e) => notifyOwner(env, `Backup failed: ${e.message}`)));
+        .catch((e) => notifyOwner(env, `Backup failed: ${e.message}`, "backup")));
   }
   if (!chat) {
     st.chats.set(m.chat.id, { chat_id: m.chat.id, name, username, muted: 0 });
@@ -192,7 +202,7 @@ export async function onBusinessMessage(env, m, edited) {
   if (!edited && scheduleActive(st.cfg, "autoreply")) {
     const rule = matchAutoreply(st.autoreplies, m.text ?? m.caption);
     if (rule) tasks.push(sendAutoreply(env, m, rule).then((sent) => { if (sent) replied = 1; })
-      .catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`)));
+      .catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`, "auto-reply")));
   }
 
   // Close DM: delete the incoming message for both sides immediately after it's handled above.
@@ -200,11 +210,11 @@ export async function onBusinessMessage(env, m, edited) {
     tasks.push(
       tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
         .then(() => { deleted = 1; })
-        .catch((e) => notifyOwner(env, `Close DM: couldn't delete a message (${e.message})`)));
+        .catch((e) => notifyOwner(env, `Close DM: couldn't delete a message (${e.message})`, "close-dm")));
   }
 
   await Promise.all(tasks);
-  if (!edited) await bumpStats(env, st, m.chat.id, replied, deleted).catch((e) => notifyOwner(env, `Stats update failed: ${e.message}`));
+  if (!edited) await bumpStats(env, st, m.chat.id, replied, deleted).catch((e) => notifyOwner(env, `Stats update failed: ${e.message}`, "stats"));
 }
 
 export async function onDeleted(env, d) {
@@ -218,5 +228,5 @@ export async function onDeleted(env, d) {
   await deliver(env, st, d.chat.id, {
     type: "notice", name, username, unix: nowSec(), label: "🗑 Deleted\n",
     text: `${n} message${n > 1 ? "s were" : " was"} deleted in this chat.`,
-  }).catch((e) => notifyOwner(env, `Backup failed: ${e.message}`));
+  }).catch((e) => notifyOwner(env, `Backup failed: ${e.message}`, "backup"));
 }
