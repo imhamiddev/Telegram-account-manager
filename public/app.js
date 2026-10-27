@@ -194,7 +194,12 @@
       return h("div", { class: "item static" }, h("div", { class: "avatar" }, initials(c.name)),
         h("div", { class: "body" }, h("div", { class: "name" }, c.name || "Unknown"),
           h("div", { class: "meta" }, `${c.username ? "@" + c.username + " · " : ""}first seen ${fmtDate(c.added)}`),
-          c.muted ? h("div", { class: "badges" }, Badge("Not backed up", "warning")) : null),
+          c.muted ? h("div", { class: "badges" }, Badge("Not backed up", "warning")) : null,
+          Select([["default", "Close DM: default"], ["keep", "🛡 Never delete"], ["close", "🗑 Always delete"]], c.dm_rule || "default", async (rule) => {
+            await api("/chats/rule", { method: "POST", body: { chat_id: c.chat_id, rule } });
+            c.dm_rule = rule;
+            toast(rule === "keep" ? "Whitelisted: never auto-deleted" : rule === "close" ? "Always deleted when Close DM is on" : "Follows the global rule");
+          })),
         Switch(!c.muted, async (on) => {
           await api("/chats/mute", { method: "POST", body: { chat_id: c.chat_id, muted: !on } });
           c.muted = on ? 0 : 1;
