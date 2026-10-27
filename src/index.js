@@ -1,5 +1,5 @@
 import { tg, setSetting, loadSettings } from "./lib.js";
-import { getState, invalidate, onBusinessMessage, onDeleted } from "./backup.js";
+import { getState, invalidate, onBusinessMessage, onDeleted, logError } from "./backup.js";
 import { handleApi } from "./api.js";
 
 async function onCommand(env, m, origin) {
@@ -55,7 +55,7 @@ export default {
       if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET)
         return new Response("forbidden", { status: 403 });
       const update = await req.json();
-      ctx.waitUntil(handle(update, env, url.origin).catch((e) => console.error(e)));
+      ctx.waitUntil(handle(update, env, url.origin).catch((e) => { console.error(e); return logError(env, "webhook", e.message); }));
       return new Response("ok"); // answer Telegram immediately, work continues in the background
     }
     return env.ASSETS.fetch(req); // Mini App

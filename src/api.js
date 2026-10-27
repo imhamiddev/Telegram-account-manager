@@ -1,5 +1,5 @@
 import { verifyInitData, loadSettings, setSetting, tg, tgStrict } from "./lib.js";
-import { invalidate } from "./backup.js";
+import { invalidate, logError } from "./backup.js";
 import { isSafeRegex, isMatchType, lastDays } from "./rules.js";
 
 const json = (data, status = 200) =>
@@ -187,6 +187,7 @@ export async function handleApi(req, env, url) {
 
     return json({ error: "Not found" }, 404);
   } catch (e) {
+    await logError(env, "api", `${m} ${p}: ${e.message}`);
     return json({ error: e.message || "Server error" }, 500);
   }
 }
