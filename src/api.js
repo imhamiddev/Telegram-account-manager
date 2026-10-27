@@ -161,7 +161,7 @@ export async function handleApi(req, env, url) {
         env.DB.prepare("SELECT s.chat_id, c.name, c.username, SUM(s.msgs) msgs FROM daily_stats s LEFT JOIN chats c ON c.chat_id = s.chat_id WHERE s.day >= ? GROUP BY s.chat_id ORDER BY msgs DESC LIMIT 5").bind(since),
         env.DB.prepare("SELECT COALESCE(SUM(msgs),0) msgs, COALESCE(SUM(replies),0) replies, COALESCE(SUM(deleted),0) deleted FROM daily_stats WHERE day >= ?").bind(since),
       ]);
-      env.DB.prepare("DELETE FROM daily_stats WHERE day < ?").bind(prune).run().catch(() => {});
+      await env.DB.prepare("DELETE FROM daily_stats WHERE day < ?").bind(prune).run().catch(() => {}); // awaited: un-awaited work can be cancelled once the response is sent
       const byDay = new Map(perDay.results.map((r) => [r.day, r]));
       return json({
         days: days.map((day) => ({ day, msgs: byDay.get(day)?.msgs ?? 0, replies: byDay.get(day)?.replies ?? 0, deleted: byDay.get(day)?.deleted ?? 0 })),
