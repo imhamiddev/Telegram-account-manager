@@ -318,12 +318,17 @@
     applyTheme(); applyAccent();
     const toggle = (key, title, desc) => h("div", { class: "setting" }, h("div", {}, h("div", { class: "t" }, title), h("div", { class: "d" }, desc)),
       Switch(d.flags[key], async (on) => { const r = await api("/settings", { method: "POST", body: { key, value: on } }); if (r.warning) toast(r.warning, "error"); }));
+    const selectRow = (key, title, desc, options) => h("div", { class: "setting" },
+      h("div", {}, h("div", { class: "t" }, title), h("div", { class: "d" }, desc)),
+      Select(options, d.values[key], async (value) => { await api("/settings/value", { method: "POST", body: { key, value } }); toast("Saved"); }));
     root.replaceChildren(
       appearanceCard(d),
       Card("Backup", d.group ? `Group: ${d.group.title}` : "No group set. Send /setgr inside the backup group.", h("div", { class: "list" },
         toggle("backup_enabled", "Forward messages", "Turn off to pause forwarding"),
         toggle("topics_enabled", "Topic per sender", "Requires a forum group with Manage Topics"),
-        toggle("close_dm", "Close DM (auto-delete)", "Instantly deletes every incoming private message for both sides")), { flush: true }),
+        toggle("close_dm", "Close DM (auto-delete)", "Instantly deletes every incoming private message for both sides"),
+        selectRow("close_dm_mode", "Close DM applies to", "Whitelist chats from the Chats tab either way",
+          [["all", "Everyone except whitelist"], ["selected", "Only chats I pick"]])), { flush: true }),
       Card("Auto-reply", "Reply instantly to an exact keyword", h("div", { class: "stack" },
         Btn("Manage auto-replies", { variant: "outline", ic: "reply", block: true, onclick: () => {
           openSheet((close) => {
