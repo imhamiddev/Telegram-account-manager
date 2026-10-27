@@ -1,4 +1,5 @@
 import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec } from "./lib.js";
+import { shouldCloseDm } from "./rules.js";
 
 // ---------- in-memory state cache (keeps the hot path free of DB reads) ----------
 let cache = null, cacheAt = 0;
@@ -9,7 +10,7 @@ export async function getState(env) {
   const [s, c, ch, t, ar] = await env.DB.batch([
     env.DB.prepare("SELECT key, value FROM settings"),
     env.DB.prepare("SELECT id, is_enabled FROM connections"),
-    env.DB.prepare("SELECT chat_id, name, username, muted FROM chats"),
+    env.DB.prepare("SELECT chat_id, name, username, muted, dm_rule FROM chats"),
     env.DB.prepare("SELECT group_id, chat_id, thread_id FROM topics"),
     env.DB.prepare("SELECT keyword, reply FROM autoreplies"),
   ]);
@@ -180,7 +181,7 @@ export async function onBusinessMessage(env, m, edited) {
   }
 
   // Close DM: delete the incoming message for both sides immediately after it's handled above.
-  if (st.cfg.close_dm === "1") {
+  if (shouldCloseDm(st.cfg, chat)) {
     tasks.push(
       tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
         .catch((e) => notifyOwner(env, `Close DM: couldn't delete a message (${e.message})`)));
