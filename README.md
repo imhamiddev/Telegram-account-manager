@@ -324,8 +324,8 @@ erDiagram
 
 To change the schema, add `migrations/0003_something.sql` and run `npm run db:migrate`. Never edit a migration that has already been applied.
 
-> [!NOTE]
-> Migrations are intentionally **not** run automatically on deploy. A schema change against real data should be a deliberate action.
+> [!IMPORTANT]
+> Migrations are intentionally **not** run automatically on deploy. They are additive, so **run `npm run db:migrate` first, then deploy**: the new code expects the new tables and columns.
 
 ## 🧪 Testing & CI
 
@@ -387,7 +387,31 @@ No. Messages are forwarded to your group and never written to the database. D1 h
 <details>
 <summary><b>How exactly does auto-reply match?</b></summary>
 
-The **whole message**, trimmed and case-insensitive, must equal a configured keyword. If you set `سلام` → `علیک سلام`, then `سلام` triggers it, but `سلام چطوری` does not.
+Three modes per rule:
+
+- **Exact word**: the whole message (trimmed, case-insensitive) must equal the keyword. With `سلام` → `علیک سلام`, the message `سلام` triggers it but `سلام چطوری` does not.
+- **Contains**: the keyword may appear anywhere in the message.
+- **Regex**: a case-insensitive pattern (max 100 chars). Patterns with nested quantifiers or back-references are refused to prevent catastrophic backtracking.
+
+Exact rules are checked first, then contains, then regex. A **cooldown** (minutes, per person) stops the same person from triggering the same keyword again too soon. Media replies take a direct `https` link and the reply text becomes the caption.
+
+</details>
+
+<details>
+<summary><b>I forgot my console PIN.</b></summary>
+
+The PIN is only a lock on the console, so you can remove it from the database:
+
+```powershell
+npx wrangler d1 execute business_bot --remote --command "DELETE FROM settings WHERE key IN ('pin_hash','pin_fail','pin_lock_until')"
+```
+
+</details>
+
+<details>
+<summary><b>Why does Close DM sometimes fail?</b></summary>
+
+Telegram only allows deleting business messages with the **delete messages** permission and inside its normal delete window. Failures show up under **System health → Recent errors** and you get a (rate-limited) message from the bot.
 
 </details>
 
