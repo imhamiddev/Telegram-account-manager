@@ -1,5 +1,5 @@
 import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec } from "./lib.js";
-import { shouldCloseDm, scheduleActive, buildRules, matchAutoreply, cooldownCutoff, dayKey } from "./rules.js";
+import { shouldCloseDm, scheduleActive, buildRules, matchAutoreply, cooldownCutoff, dayKey, parseWordList, findBannedWord, floodExceeded, isTrusted } from "./rules.js";
 
 // ---------- in-memory state cache (keeps the hot path free of DB reads) ----------
 let cache = null, cacheAt = 0;
@@ -20,6 +20,7 @@ export async function getState(env) {
     chats: new Map(ch.results.map((r) => [r.chat_id, r])),
     topics: new Map(t.results.map((r) => [`${r.group_id}:${r.chat_id}`, r.thread_id])),
     autoreplies: buildRules(ar.results),
+    spamWords: parseWordList(Object.fromEntries(s.results.map((r) => [r.key, r.value])).spam_words),
   };
   cacheAt = Date.now();
   return cache;
@@ -166,6 +167,24 @@ async function sendAutoreply(env, m, rule) {
   return tgStrict(env, "sendMessage", { ...base, text: rule.reply });
 }
 
+// ---------- flood guard: too many messages in a short window -> mute that chat ----------
+async function checkFlood(env, st, m, name) {
+  const max = Number(st.cfg.flood_max) || 10, windowSec = Number(st.cfg.flood_window) || 60;
+  const now = nowSec();
+  const row = await env.DB.prepare(
+    "INSERT INTO flood(chat_id,window_start,count) VALUES(?,?,1) " +
+    "ON CONFLICT(chat_id) DO UPDATE SET " +
+    "window_start = CASE WHEN ? - flood.window_start >= ? THEN ? ELSE flood.window_start END, " +
+    "count = CASE WHEN ? - flood.window_start >= ? THEN 1 ELSE flood.count + 1 END RETURNING count")
+    .bind(m.chat.id, now, now, windowSec, now, now, windowSec).first();
+  if (row && floodExceeded(row.count, max)) {
+    await env.DB.prepare("UPDATE chats SET muted=1 WHERE chat_id=?").bind(m.chat.id).run();
+    const chat = st.chats.get(m.chat.id);
+    if (chat) chat.muted = 1;
+    await notifyOwner(env, `🔇 Auto-muted ${name}: more than ${max} messages in ${windowSec}s. Unmute from the Chats tab.`, "spam");
+  }
+}
+
 // ---------- activity counters (numbers only, never content) ----------
 async function bumpStats(env, st, chatId, replies, deleted) {
   await env.DB.prepare(
@@ -185,7 +204,7 @@ export async function onBusinessMessage(env, m, edited) {
 
   const name = displayName(m.from), username = m.from?.username ?? null;
   const tasks = [];
-  let replied = 0, deleted = 0;
+  let replied = 0, deleted = 0, removed = false;
   if (st.cfg.group_id && st.cfg.backup_enabled !== "0") {
     const x = extract(m);
     tasks.push(
@@ -198,15 +217,28 @@ export async function onBusinessMessage(env, m, edited) {
       .bind(m.chat.id, name, username, nowSec()).run());
   }
 
-  // Auto-reply (exact / contains / regex), skipped for edits and outside the schedule.
-  if (!edited && scheduleActive(st.cfg, "autoreply")) {
+  // Spam filter: delete messages containing banned words (trusted chats are exempt).
+  if (st.cfg.spam_enabled === "1" && !isTrusted(chat) && findBannedWord(st.spamWords, m.text ?? m.caption)) {
+    removed = true;
+    tasks.push(
+      tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
+        .then(() => { deleted = 1; })
+        .catch((e) => notifyOwner(env, `Spam filter: couldn't delete a message (${e.message})`, "spam")));
+  }
+  // Flood guard: auto-mute a chat that sends too many messages in a short time.
+  if (st.cfg.flood_enabled === "1" && !edited && !isTrusted(chat)) {
+    tasks.push(checkFlood(env, st, m, name).catch((e) => notifyOwner(env, `Flood guard failed: ${e.message}`, "spam")));
+  }
+
+  // Auto-reply (exact / contains / regex), skipped for edits, removed spam and outside the schedule.
+  if (!edited && !removed && scheduleActive(st.cfg, "autoreply")) {
     const rule = matchAutoreply(st.autoreplies, m.text ?? m.caption);
     if (rule) tasks.push(sendAutoreply(env, m, rule).then((sent) => { if (sent) replied = 1; })
       .catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`, "auto-reply")));
   }
 
   // Close DM: delete the incoming message for both sides immediately after it's handled above.
-  if (shouldCloseDm(st.cfg, chat) && scheduleActive(st.cfg, "close_dm")) {
+  if (!removed && shouldCloseDm(st.cfg, chat) && scheduleActive(st.cfg, "close_dm")) {
     tasks.push(
       tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
         .then(() => { deleted = 1; })
