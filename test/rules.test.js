@@ -174,3 +174,32 @@ test("stats: lastDays has no duplicates across a month boundary", () => {
   assert.equal(days.at(-1), "2026-11-02");
   assert.equal(days[0], "2026-10-29");
 });
+
+import { parseWordList, findBannedWord, floodExceeded, isTrusted } from "../src/rules.js";
+
+test("spam: word list parsing handles newlines, commas, Persian comma, case and duplicates", () => {
+  assert.deepEqual(parseWordList("Casino, BET\nbet،  free money ;"), ["casino", "bet", "free money"]);
+  assert.deepEqual(parseWordList(""), []);
+  assert.deepEqual(parseWordList(undefined), []);
+  assert.deepEqual(parseWordList("x".repeat(51)), []);
+});
+
+test("spam: finds banned words anywhere, case-insensitive", () => {
+  const words = parseWordList("casino\nکلاهبرداری");
+  assert.equal(findBannedWord(words, "Play at the CASINO now"), "casino");
+  assert.equal(findBannedWord(words, "این یک کلاهبرداری است"), "کلاهبرداری");
+  assert.equal(findBannedWord(words, "hello there"), null);
+  assert.equal(findBannedWord(words, ""), null);
+  assert.equal(findBannedWord([], "casino"), null);
+});
+
+test("spam: flood trips only above the limit", () => {
+  assert.equal(floodExceeded(10, 10), false);
+  assert.equal(floodExceeded(11, 10), true);
+});
+
+test("spam: only 'keep' chats are trusted", () => {
+  assert.equal(isTrusted({ dm_rule: "keep" }), true);
+  assert.equal(isTrusted({ dm_rule: "default" }), false);
+  assert.equal(isTrusted(undefined), false);
+});
