@@ -1,5 +1,5 @@
 import { tg, setSetting, loadSettings } from "./lib.js";
-import { getState, invalidate, onBusinessMessage, onDeleted, logError } from "./backup.js";
+import { invalidate, onBusinessMessage, onDeleted, logError } from "./backup.js";
 import { handleApi } from "./api.js";
 
 async function onCommand(env, m, origin) {
