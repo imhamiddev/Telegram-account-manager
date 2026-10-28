@@ -82,3 +82,75 @@ test("schedule: honors the configured time zone", () => {
   assert.equal(scheduleActive({ ...base, tz: "Asia/Tehran" }, "close_dm", now), true);
   assert.equal(scheduleActive({ ...base, tz: "UTC" }, "close_dm", now), false);
 });
+
+import { matchAutoreply, buildRules, isSafeRegex, cooldownCutoff } from "../src/rules.js";
+
+const rules = buildRules([
+  { keyword: "سلام", reply: "علیک سلام", match_type: "exact" },
+  { keyword: "price", reply: "see pricing", match_type: "contains" },
+  { keyword: "^order\\s*#?\\d{3,}$", reply: "got your order", match_type: "regex" },
+]);
+
+test("auto-reply: exact matches only the whole message", () => {
+  assert.equal(matchAutoreply(rules, "سلام")?.reply, "علیک سلام");
+  assert.equal(matchAutoreply(rules, "  سلام  ")?.reply, "علیک سلام");
+  assert.equal(matchAutoreply(rules, "سلام چطوری"), null);
+  assert.equal(matchAutoreply(rules, "به همه سلام"), null);
+});
+
+test("auto-reply: exact is case-insensitive", () => {
+  const r = buildRules([{ keyword: "hello", reply: "hi", match_type: "exact" }]);
+  assert.equal(matchAutoreply(r, "HeLLo")?.reply, "hi");
+});
+
+test("auto-reply: contains matches inside a sentence", () => {
+  assert.equal(matchAutoreply(rules, "what is the PRICE of this?")?.reply, "see pricing");
+  assert.equal(matchAutoreply(rules, "no match here"), null);
+});
+
+test("auto-reply: regex matches pattern", () => {
+  assert.equal(matchAutoreply(rules, "order #12345")?.reply, "got your order");
+  assert.equal(matchAutoreply(rules, "order 12")?.reply, undefined);
+});
+
+test("auto-reply: empty or missing text never matches", () => {
+  assert.equal(matchAutoreply(rules, ""), null);
+  assert.equal(matchAutoreply(rules, "   "), null);
+  assert.equal(matchAutoreply(rules, undefined), null);
+});
+
+test("auto-reply: exact rules win over contains/regex", () => {
+  const r = buildRules([
+    { keyword: "hi", reply: "contains-hit", match_type: "contains" },
+    { keyword: "hi", reply: "x", match_type: "regex" },
+    { keyword: "hi there", reply: "exact-hit", match_type: "exact" },
+  ]);
+  assert.equal(matchAutoreply(r, "hi there")?.reply, "exact-hit");
+});
+
+test("auto-reply: unsafe or broken regex rules are ignored, not fatal", () => {
+  const r = buildRules([
+    { keyword: "(a+)+$", reply: "bad", match_type: "regex" },
+    { keyword: "([", reply: "broken", match_type: "regex" },
+    { keyword: "ok", reply: "fine", match_type: "exact" },
+  ]);
+  assert.equal(r.length, 1);
+  assert.equal(matchAutoreply(r, "ok")?.reply, "fine");
+});
+
+test("regex safety check", () => {
+  assert.equal(isSafeRegex("^hello$"), true);
+  assert.equal(isSafeRegex("(a+)+"), false);
+  assert.equal(isSafeRegex("(.*)*x"), false);
+  assert.equal(isSafeRegex("(a)\\1"), false);
+  assert.equal(isSafeRegex("x".repeat(101)), false);
+  assert.equal(isSafeRegex(""), false);
+  assert.equal(isSafeRegex("["), false);
+});
+
+test("cooldown cutoff", () => {
+  assert.equal(cooldownCutoff(1000, 0), 1000);
+  assert.equal(cooldownCutoff(1000, 5), 700);
+  assert.equal(cooldownCutoff(1000, -3), 1000);
+  assert.equal(cooldownCutoff(1000, "x"), 1000);
+});

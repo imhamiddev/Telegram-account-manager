@@ -1,5 +1,5 @@
 import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec } from "./lib.js";
-import { shouldCloseDm, scheduleActive } from "./rules.js";
+import { shouldCloseDm, scheduleActive, buildRules, matchAutoreply, cooldownCutoff } from "./rules.js";
 
 // ---------- in-memory state cache (keeps the hot path free of DB reads) ----------
 let cache = null, cacheAt = 0;
@@ -12,14 +12,14 @@ export async function getState(env) {
     env.DB.prepare("SELECT id, is_enabled FROM connections"),
     env.DB.prepare("SELECT chat_id, name, username, muted, dm_rule FROM chats"),
     env.DB.prepare("SELECT group_id, chat_id, thread_id FROM topics"),
-    env.DB.prepare("SELECT keyword, reply FROM autoreplies"),
+    env.DB.prepare("SELECT keyword, reply, match_type, cooldown_min, media_type, media_url FROM autoreplies"),
   ]);
   cache = {
     cfg: Object.fromEntries(s.results.map((r) => [r.key, r.value])),
     conns: new Map(c.results.map((r) => [r.id, !!r.is_enabled])),
     chats: new Map(ch.results.map((r) => [r.chat_id, r])),
     topics: new Map(t.results.map((r) => [`${r.group_id}:${r.chat_id}`, r.thread_id])),
-    autoreplies: new Map(ar.results.map((r) => [r.keyword, r.reply])),
+    autoreplies: buildRules(ar.results),
   };
   cacheAt = Date.now();
   return cache;
@@ -139,12 +139,21 @@ async function deliver(env, st, chatId, payload) {
 }
 
 // ---------- auto-reply ----------
-// Matches only when the whole (trimmed) message is exactly one configured keyword.
-function matchAutoreply(st, text) {
-  if (!text) return null;
-  const key = text.trim().toLowerCase();
-  if (!key) return null;
-  return st.autoreplies.get(key) ?? null;
+// Sends the reply through the business connection, so it appears to come from the owner's account.
+// With a cooldown, a person can trigger the same keyword only once per N minutes (claimed atomically in D1).
+async function sendAutoreply(env, m, rule) {
+  const base = { business_connection_id: m.business_connection_id, chat_id: m.chat.id };
+  if (rule.cooldown_min > 0) {
+    const now = nowSec();
+    const claim = await env.DB.prepare(
+      "INSERT INTO autoreply_hits(keyword,chat_id,last_at) VALUES(?,?,?) " +
+      "ON CONFLICT(keyword,chat_id) DO UPDATE SET last_at=excluded.last_at WHERE autoreply_hits.last_at <= ? RETURNING 1 AS ok")
+      .bind(rule.keyword, m.chat.id, now, cooldownCutoff(now, rule.cooldown_min)).first();
+    if (!claim) return; // still cooling down for this person
+  }
+  const method = { photo: "sendPhoto", document: "sendDocument", video: "sendVideo" }[rule.media_type];
+  if (method && rule.media_url) return tgStrict(env, method, { ...base, [rule.media_type]: rule.media_url, caption: rule.reply });
+  return tgStrict(env, "sendMessage", { ...base, text: rule.reply });
 }
 
 // ---------- entry points ----------
@@ -170,14 +179,10 @@ export async function onBusinessMessage(env, m, edited) {
       .bind(m.chat.id, name, username, nowSec()).run());
   }
 
-  // Auto-reply: exact-match keyword, sent via the business connection so it appears from the owner's account.
-  if (!edited) {
-    const reply = scheduleActive(st.cfg, "autoreply") ? matchAutoreply(st, m.text) : null;
-    if (reply) {
-      tasks.push(
-        tgStrict(env, "sendMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, text: reply })
-          .catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`)));
-    }
+  // Auto-reply (exact / contains / regex), skipped for edits and outside the schedule.
+  if (!edited && scheduleActive(st.cfg, "autoreply")) {
+    const rule = matchAutoreply(st.autoreplies, m.text ?? m.caption);
+    if (rule) tasks.push(sendAutoreply(env, m, rule).catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`)));
   }
 
   // Close DM: delete the incoming message for both sides immediately after it's handled above.

@@ -210,3 +210,9 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 
 .time-pair { display: flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); }
 .time-pair .input { width: 96px; height: 32px; padding: 0 8px; font-size: 12px; }
+
+.textarea { height: auto; min-height: 72px; padding: 8px 12px; resize: vertical; line-height: 1.4; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.kw-row { cursor: pointer; transition: background .15s var(--ease); }
+.kw-row:active { background: hsl(var(--accent) / .1); }
+.kw-row .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
