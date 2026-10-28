@@ -361,7 +361,7 @@ erDiagram
 | `npm run dev:test` و بعد `npm run smoke` | تست یکپارچه: ورکر + D1 لوکال، اجرای همه مایگریشن‌ها، وبهوک‌های تلگرام جعلی و تست همه مسیرهای API (۳۸ چک) |
 | `npm run smoke:ui` | خود Mini App واقعی رو توی jsdom روی همون ورکر اجرا می‌کنه: همه تب‌ها، ویرایشگر ریپلای خودکار و جریان قفل پین (۲۳ چک) |
 
-GitHub Actions با هر پوش و پول‌ریکوئست `npm run check` رو اجرا می‌کنه (فقط چک می‌کنه و هیچ‌وقت دیپلوی نمی‌کنه).
+یه workflow اختیاری برای GitHub Actions توی [`docs/ci.yml.example`](docs/ci.yml.example) هست. کپیش کن به `.github/workflows/ci.yml` تا با هر پوش و پول‌ریکوئست `npm run check` اجرا بشه (فقط چک می‌کنه و هیچ‌وقت دیپلوی نمی‌کنه).
 
 > [!TIP]
 > توی Cloudflare بخش **Workers Builds ← Build command** رو بذار `npm run check`. اینطوری اگه تست یا لینت خطا بده، دیپلوی متوقف میشه و ورکر خراب روی سرور نمیره.
@@ -374,7 +374,7 @@ GitHub Actions با هر پوش و پول‌ریکوئست `npm run check` رو 
 | دیتابیس | Cloudflare D1 (SQLite) |
 | فرانت‌اند | Mini App با Vanilla JS، بدون build، توکن‌های سبک shadcn/ui |
 | احراز هویت | `initData` تلگرام، فقط مالک |
-| CI/CD | Cloudflare Workers Builds (دیپلوی) و GitHub Actions (لینت و تست) |
+| CI/CD | Cloudflare Workers Builds (دیپلوی)، GitHub Actions اختیاری (لینت و تست) |
 
 <details>
 <summary><b>📁 ساختار ریپو</b></summary>
@@ -395,7 +395,7 @@ GitHub Actions با هر پوش و پول‌ریکوئست `npm run check` رو 
 ├── test/               # تست‌های واحد (node --test)
 ├── scripts/            # تست یکپارچه (smoke)
 ├── db-legacy/          # فایل‌های قدیمی اسکیما، فقط برای مرجع
-├── .github/workflows/  # CI (لینت و تست)
+├── docs/               # نمونه workflow اختیاری CI
 ├── wrangler.toml
 └── set-webhook.ps1
 ```

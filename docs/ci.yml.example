@@ -1,0 +1,23 @@
+# Optional CI. Copy this file to .github/workflows/ci.yml to enable it.
+# (Pushing workflow files needs a token with the "workflow" scope, or use GitHub's web UI: Add file > Create new file.)
+#
+# Checks only. Deployment is handled by Cloudflare Workers Builds, not by GitHub Actions.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint and unit tests
+        run: npm run check

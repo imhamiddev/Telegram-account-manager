@@ -337,7 +337,7 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 | `npm run dev:test`, then `npm run smoke` | Integration test: Worker + local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route (38 checks) |
 | `npm run smoke:ui` | Runs the real Mini App in jsdom against that Worker: every tab, the auto-reply editor, the PIN lock flow (23 checks) |
 
-GitHub Actions runs `npm run check` on every push and pull request (checks only, it never deploys).
+An optional GitHub Actions workflow lives in [`docs/ci.yml.example`](docs/ci.yml.example). Copy it to `.github/workflows/ci.yml` to run `npm run check` on every push and pull request (checks only, it never deploys).
 
 > [!TIP]
 > In Cloudflare **Workers Builds → Build command**, set `npm run check`. A failing test or lint error will then block the deploy instead of shipping a broken Worker.
@@ -350,7 +350,7 @@ GitHub Actions runs `npm run check` on every push and pull request (checks only,
 | Database | Cloudflare D1 (SQLite) |
 | Frontend | Vanilla JS Mini App, no build step, shadcn/ui-style tokens |
 | Auth | Telegram `initData`, owner only |
-| CI/CD | Cloudflare Workers Builds (deploy) + GitHub Actions (lint and tests) |
+| CI/CD | Cloudflare Workers Builds (deploy), optional GitHub Actions (lint and tests) |
 
 <details>
 <summary><b>📁 Repository layout</b></summary>
@@ -369,7 +369,7 @@ GitHub Actions runs `npm run check` on every push and pull request (checks only,
 ├── test/               # unit tests (node --test)
 ├── scripts/            # integration smoke test
 ├── db-legacy/          # old hand-run schema files, reference only
-├── .github/workflows/  # CI (lint + tests)
+├── docs/               # optional CI workflow example
 ├── wrangler.toml
 └── set-webhook.ps1
 ```
