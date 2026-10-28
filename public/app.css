@@ -252,3 +252,20 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .err-list { display: flex; flex-direction: column; gap: 8px; animation: viewIn .2s var(--ease); }
 .err-item { padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
 .err-msg { font-size: 12px; margin-top: 4px; overflow-wrap: anywhere; color: hsl(var(--muted-foreground)); }
+
+/* PIN lock screen */
+.lock-screen { position: fixed; inset: 0; z-index: 200; background: hsl(var(--background)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: env(safe-area-inset-top, 0) 24px env(safe-area-inset-bottom, 0); animation: fade .2s var(--ease); }
+.lock-screen.closing { animation: fadeOut .2s var(--ease) forwards; }
+.lock-title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.pin-msg { font-size: 13px; color: hsl(var(--muted-foreground)); text-align: center; min-height: 18px; max-width: 280px; }
+.pin-dots { display: flex; gap: 14px; height: 16px; align-items: center; }
+.pin-dot { width: 12px; height: 12px; border-radius: 9999px; border: 2px solid hsl(var(--muted-foreground) / .6); transition: background .15s var(--ease), border-color .15s var(--ease), transform .18s cubic-bezier(.34,1.56,.64,1); }
+.pin-dot.filled { background: hsl(var(--accent)); border-color: hsl(var(--accent)); transform: scale(1.2); }
+.pin-dots.shake { animation: shake .4s var(--ease); }
+@keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+.keypad { display: grid; grid-template-columns: repeat(3, 68px); gap: 14px; margin-top: 8px; }
+.key { width: 68px; height: 68px; border-radius: 9999px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit; font-size: 22px; font-weight: 500; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .12s var(--ease), transform .1s var(--ease); }
+.key:active { transform: scale(.92); background: hsl(var(--accent) / .15); }
+.key.ghost { border-color: transparent; color: hsl(var(--muted-foreground)); }
+.key.ok { background: hsl(var(--accent)); border-color: transparent; color: hsl(var(--accent-foreground)); }
+.key svg { width: 22px; height: 22px; }

@@ -153,16 +153,68 @@
   const prettyRight = (k) => k.replace(/^can_/, "").replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
   // ---------- API ----------
-  async function api(path, { method = "GET", body } = {}) {
-    const r = await fetch("/api" + path, {
-      method,
-      headers: { Authorization: "tma " + (tg?.initData || ""), "content-type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+  let unlockToken = null;   // in memory only: closing the console always locks it again
+  let lockEnabled = false;
+  let unlockPromise = null;
+
+  async function api(path, { method = "GET", body } = {}, retried = false) {
+    const headers = { Authorization: "tma " + (tg?.initData || ""), "content-type": "application/json" };
+    if (unlockToken) headers["X-Unlock"] = unlockToken;
+    const r = await fetch("/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 423 && !retried) { // the session expired or the PIN was just enabled: ask again, then retry once
+      unlockToken = null;
+      await requestUnlock();
+      return api(path, { method, body }, true);
+    }
     if (!r.ok) throw new Error(j.error || r.statusText);
     return j;
   }
+
+  // Full-screen PIN pad. Resolves once the server accepts the PIN (single-flight: many failed calls share one prompt).
+  function requestUnlock() {
+    if (unlockPromise) return unlockPromise;
+    unlockPromise = new Promise((resolve) => {
+      let pin = "";
+      const dots = h("div", { class: "pin-dots" });
+      const msg = h("div", { class: "pin-msg" }, "Enter your PIN");
+      const drawDots = () => dots.replaceChildren(...Array.from({ length: Math.max(4, pin.length) }, (_, i) => h("span", { class: "pin-dot" + (i < pin.length ? " filled" : "") })));
+      const press = (d) => { if (pin.length < 8) { pin += d; drawDots(); try { tg?.HapticFeedback?.selectionChanged(); } catch {} } };
+      const submit = async () => {
+        if (pin.length < 4) return;
+        try {
+          const r = await api("/lock/verify", { method: "POST", body: { pin } });
+          unlockToken = r.token;
+          screen.classList.add("closing");
+          screen.addEventListener("animationend", () => screen.remove(), { once: true });
+          unlockPromise = null;
+          resolve();
+        } catch (e) {
+          msg.textContent = e.message;
+          dots.classList.remove("shake"); void dots.offsetWidth; dots.classList.add("shake");
+          try { tg?.HapticFeedback?.notificationOccurred("error"); } catch {}
+          pin = ""; drawDots();
+        }
+      };
+      const key = (label, onclick, cls = "") => h("button", { type: "button", class: "key " + cls, onclick }, label);
+      const pad = h("div", { class: "keypad" },
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => key(String(n), () => press(String(n)))),
+        key(icon("x"), () => { pin = ""; drawDots(); }, "ghost"),
+        key("0", () => press("0")),
+        key(icon("check"), submit, "ok"));
+      const screen = h("div", { class: "lock-screen" }, h("div", { class: "lock-title" }, "Backup Console"), msg, dots, pad);
+      drawDots();
+      document.body.append(screen);
+    });
+    return unlockPromise;
+  }
+
+  // Re-lock when the console was in the background for a while.
+  let hiddenAt = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (lockEnabled && hiddenAt && Date.now() - hiddenAt > 30000) { unlockToken = null; requestUnlock(); }
+  });
 
   // ---------- views ----------
   // System health: db latency, webhook, connection, recent errors and the deployed version.
@@ -425,6 +477,49 @@
       Card("Your rules", null, list, { flush: true }));
   }
 
+  // PIN lock for the console (the server enforces it; this card only manages it).
+  function lockCard() {
+    const box = h("div", { class: "stack" });
+    const pinInput = (ph) => h("input", { class: "input", type: "password", inputmode: "numeric", autocomplete: "off", maxlength: "8", placeholder: ph });
+
+    function setPinSheet() {
+      openSheet((close) => {
+        const a = pinInput("4 to 8 digits"), b = pinInput("Repeat the PIN");
+        return h("div", { class: "stack" },
+          h("h3", { class: "card-title" }, lockEnabled ? "Change PIN" : "Set a PIN"),
+          Field("New PIN", a), Field("Repeat PIN", b),
+          Btn("Save PIN", { block: true, onclick: async () => {
+            if (a.value !== b.value) throw new Error("The PINs don't match");
+            const r = await api("/lock/set", { method: "POST", body: { pin: a.value } });
+            unlockToken = r.token; lockEnabled = true;
+            toast("PIN saved"); close(); render();
+          } }));
+      });
+    }
+    function disableSheet() {
+      openSheet((close) => {
+        const cur = pinInput("Current PIN");
+        return h("div", { class: "stack" },
+          h("h3", { class: "card-title" }, "Turn off PIN lock"),
+          Field("Current PIN", cur),
+          Btn("Turn off", { variant: "destructive", block: true, onclick: async () => {
+            await api("/lock/disable", { method: "POST", body: { pin: cur.value } });
+            unlockToken = null; lockEnabled = false;
+            toast("PIN lock is off"); close(); render();
+          } }));
+      });
+    }
+    function render() {
+      box.replaceChildren(
+        h("div", { class: "row between" }, "Status", Badge(lockEnabled ? "On" : "Off", lockEnabled ? "success" : "secondary")),
+        lockEnabled
+          ? h("div", { class: "grid2" }, Btn("Change PIN", { variant: "outline", onclick: setPinSheet }), Btn("Turn off", { variant: "outline", onclick: disableSheet }))
+          : Btn("Set a PIN", { block: true, onclick: setPinSheet }));
+    }
+    render();
+    return Card("Console lock", "Ask for a PIN when the console opens and after 30 seconds in the background", box);
+  }
+
   // Spam filter + flood guard. Chats marked "Never delete" in the Chats tab are exempt from both.
   function spamCard(d, toggle) {
     const words = h("textarea", { class: "input textarea", rows: "3", placeholder: "One word or phrase per line (or comma separated)" });
@@ -477,6 +572,7 @@
       Select(options, d.values[key], async (value) => { await api("/settings/value", { method: "POST", body: { key, value } }); toast("Saved"); }));
     root.replaceChildren(
       appearanceCard(d),
+      lockCard(),
       Card("Backup", d.group ? `Group: ${d.group.title}` : "No group set. Send /setgr inside the backup group.", h("div", { class: "list" },
         toggle("backup_enabled", "Forward messages", "Turn off to pause forwarding"),
         toggle("topics_enabled", "Topic per sender", "Requires a forum group with Manage Topics"),
@@ -527,5 +623,14 @@
   if (!tg?.initData) {
     document.getElementById("app").replaceChildren(h("div", { class: "center" },
       Card("Open from Telegram", "This console only works inside Telegram.", h("p", { class: "card-description" }, "Open your bot and tap the Console button."))));
-  } else shell();
+  } else {
+    (async () => {
+      try {
+        const st = await api("/lock/status");
+        lockEnabled = st.enabled;
+        if (st.enabled && !st.unlocked) await requestUnlock();
+      } catch { /* the first real request will surface the error */ }
+      shell();
+    })();
+  }
 })();
