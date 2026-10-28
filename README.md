@@ -40,13 +40,19 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 | 🗂️ | **Message backup** | Every incoming DM is forwarded to your backup group (`/setgr`) |
 | ✏️ | **Edits & deletions** | Edited messages are re-sent with a label; deleted messages produce a notice |
 | 🧵 | **Topic per sender** | Optional: one forum topic per person, so the group stays organised |
-| 🔒 | **Close DM** | One switch: every incoming private message is deleted for **both sides**, instantly |
-| 💬 | **Auto-reply** | Set a keyword and a reply. If someone sends **exactly** that word, the bot answers from your account |
+| 🔒 | **Close DM** | One switch: incoming private messages are deleted for **both sides**, instantly |
+| 🛡️ | **Whitelist & modes** | Mark chats *Never delete* (family, VIP clients), or flip the mode to *only chats I pick* |
+| 🕒 | **Schedule** | Run Close DM and auto-reply only during chosen hours (overnight windows and time zones supported) |
+| 💬 | **Smart auto-reply** | Exact word, *contains* or **regex** matching, per-person **cooldown**, optional photo/file/video |
+| 🚫 | **Spam protection** | Delete messages with banned words, and auto-mute chats that flood you |
+| 🔐 | **Console PIN lock** | PBKDF2-hashed PIN enforced by the server, brute-force lockout, auto-lock in background |
+| 📊 | **Activity chart** | Messages per day (7/14/30d), replies, deletions and your most active chats. Counters only |
+| 🩺 | **System health** | DB latency, webhook status, connection, last errors and the deployed version |
 | 🔇 | **Per-chat mute** | Turn backup off for individual chats |
-| ♾️ | **Lazy-loaded chats** | The chat list loads 30 at a time as you scroll, so it stays fast with thousands of chats |
+| ♾️ | **Lazy-loaded chats** | 30 at a time as you scroll, so it stays fast with thousands of chats |
 | 🌗 | **Light / Dark / System** | Manual theme override, saved on the server |
 | 🎨 | **7 accent colors** | Red, green, yellow, purple, pink, blue, orange. Accent only, never the background |
-| 🫧 | **Smooth UI** | Animated view transitions, springy switches, press feedback, sliding sheets, toasts. Honors *reduced motion* |
+| 🫧 | **Smooth UI** | Animated transitions, springy switches, sliding sheets, toasts. Honors *reduced motion* |
 
 ## 📱 Preview
 
@@ -64,10 +70,10 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 
 **Console tabs**
 
-- **Overview**: live status, group, alerts
-- **Chats**: search, mute/unmute, infinite scroll
+- **Overview**: status, system health, activity chart
+- **Chats**: search, mute, per-chat Close DM rule, infinite scroll
 - **Account**: connection status and granted permissions
-- **Settings**: theme, accent, Close DM, topics, auto-replies
+- **Settings**: theme, PIN lock, Close DM, schedule, spam, auto-replies
 
 <br/>
 
