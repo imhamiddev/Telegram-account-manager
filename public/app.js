@@ -153,16 +153,68 @@
   const prettyRight = (k) => k.replace(/^can_/, "").replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
   // ---------- API ----------
-  async function api(path, { method = "GET", body } = {}) {
-    const r = await fetch("/api" + path, {
-      method,
-      headers: { Authorization: "tma " + (tg?.initData || ""), "content-type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+  let unlockToken = null;   // in memory only: closing the console always locks it again
+  let lockEnabled = false;
+  let unlockPromise = null;
+
+  async function api(path, { method = "GET", body } = {}, retried = false) {
+    const headers = { Authorization: "tma " + (tg?.initData || ""), "content-type": "application/json" };
+    if (unlockToken) headers["X-Unlock"] = unlockToken;
+    const r = await fetch("/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 423 && !retried) { // the session expired or the PIN was just enabled: ask again, then retry once
+      unlockToken = null;
+      await requestUnlock();
+      return api(path, { method, body }, true);
+    }
     if (!r.ok) throw new Error(j.error || r.statusText);
     return j;
   }
+
+  // Full-screen PIN pad. Resolves once the server accepts the PIN (single-flight: many failed calls share one prompt).
+  function requestUnlock() {
+    if (unlockPromise) return unlockPromise;
+    unlockPromise = new Promise((resolve) => {
+      let pin = "";
+      const dots = h("div", { class: "pin-dots" });
+      const msg = h("div", { class: "pin-msg" }, "Enter your PIN");
+      const drawDots = () => dots.replaceChildren(...Array.from({ length: Math.max(4, pin.length) }, (_, i) => h("span", { class: "pin-dot" + (i < pin.length ? " filled" : "") })));
+      const press = (d) => { if (pin.length < 8) { pin += d; drawDots(); try { tg?.HapticFeedback?.selectionChanged(); } catch {} } };
+      const submit = async () => {
+        if (pin.length < 4) return;
+        try {
+          const r = await api("/lock/verify", { method: "POST", body: { pin } });
+          unlockToken = r.token;
+          screen.classList.add("closing");
+          screen.addEventListener("animationend", () => screen.remove(), { once: true });
+          unlockPromise = null;
+          resolve();
+        } catch (e) {
+          msg.textContent = e.message;
+          dots.classList.remove("shake"); void dots.offsetWidth; dots.classList.add("shake");
+          try { tg?.HapticFeedback?.notificationOccurred("error"); } catch {}
+          pin = ""; drawDots();
+        }
+      };
+      const key = (label, onclick, cls = "") => h("button", { type: "button", class: "key " + cls, onclick }, label);
+      const pad = h("div", { class: "keypad" },
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => key(String(n), () => press(String(n)))),
+        key(icon("x"), () => { pin = ""; drawDots(); }, "ghost"),
+        key("0", () => press("0")),
+        key(icon("check"), submit, "ok"));
+      const screen = h("div", { class: "lock-screen" }, h("div", { class: "lock-title" }, "Backup Console"), msg, dots, pad);
+      drawDots();
+      document.body.append(screen);
+    });
+    return unlockPromise;
+  }
+
+  // Re-lock when the console was in the background for a while.
+  let hiddenAt = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (lockEnabled && hiddenAt && Date.now() - hiddenAt > 30000) { unlockToken = null; requestUnlock(); }
+  });
 
   // ---------- views ----------
   // System health: db latency, webhook, connection, recent errors and the deployed version.
@@ -527,5 +579,14 @@
   if (!tg?.initData) {
     document.getElementById("app").replaceChildren(h("div", { class: "center" },
       Card("Open from Telegram", "This console only works inside Telegram.", h("p", { class: "card-description" }, "Open your bot and tap the Console button."))));
-  } else shell();
+  } else {
+    (async () => {
+      try {
+        const st = await api("/lock/status");
+        lockEnabled = st.enabled;
+        if (st.enabled && !st.unlocked) await requestUnlock();
+      } catch { /* the first real request will surface the error */ }
+      shell();
+    })();
+  }
 })();
