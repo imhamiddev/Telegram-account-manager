@@ -40,13 +40,19 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 | 🗂️ | **Message backup** | Every incoming DM is forwarded to your backup group (`/setgr`) |
 | ✏️ | **Edits & deletions** | Edited messages are re-sent with a label; deleted messages produce a notice |
 | 🧵 | **Topic per sender** | Optional: one forum topic per person, so the group stays organised |
-| 🔒 | **Close DM** | One switch: every incoming private message is deleted for **both sides**, instantly |
-| 💬 | **Auto-reply** | Set a keyword and a reply. If someone sends **exactly** that word, the bot answers from your account |
+| 🔒 | **Close DM** | One switch: incoming private messages are deleted for **both sides**, instantly |
+| 🛡️ | **Whitelist & modes** | Mark chats *Never delete* (family, VIP clients), or flip the mode to *only chats I pick* |
+| 🕒 | **Schedule** | Run Close DM and auto-reply only during chosen hours (overnight windows and time zones supported) |
+| 💬 | **Smart auto-reply** | Exact word, *contains* or **regex** matching, per-person **cooldown**, optional photo/file/video |
+| 🚫 | **Spam protection** | Delete messages with banned words, and auto-mute chats that flood you |
+| 🔐 | **Console PIN lock** | PBKDF2-hashed PIN enforced by the server, brute-force lockout, auto-lock in background |
+| 📊 | **Activity chart** | Messages per day (7/14/30d), replies, deletions and your most active chats. Counters only |
+| 🩺 | **System health** | DB latency, webhook status, connection, last errors and the deployed version |
 | 🔇 | **Per-chat mute** | Turn backup off for individual chats |
-| ♾️ | **Lazy-loaded chats** | The chat list loads 30 at a time as you scroll, so it stays fast with thousands of chats |
+| ♾️ | **Lazy-loaded chats** | 30 at a time as you scroll, so it stays fast with thousands of chats |
 | 🌗 | **Light / Dark / System** | Manual theme override, saved on the server |
 | 🎨 | **7 accent colors** | Red, green, yellow, purple, pink, blue, orange. Accent only, never the background |
-| 🫧 | **Smooth UI** | Animated view transitions, springy switches, press feedback, sliding sheets, toasts. Honors *reduced motion* |
+| 🫧 | **Smooth UI** | Animated transitions, springy switches, sliding sheets, toasts. Honors *reduced motion* |
 
 ## 📱 Preview
 
@@ -64,10 +70,10 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 
 **Console tabs**
 
-- **Overview**: live status, group, alerts
-- **Chats**: search, mute/unmute, infinite scroll
+- **Overview**: status, system health, activity chart
+- **Chats**: search, mute, per-chat Close DM rule, infinite scroll
 - **Account**: connection status and granted permissions
-- **Settings**: theme, accent, Close DM, topics, auto-replies
+- **Settings**: theme, PIN lock, Close DM, schedule, spam, auto-replies
 
 <br/>
 
@@ -112,13 +118,21 @@ flowchart TD
     C -- no --> D{Chat muted?}
     D -- yes --> X3[🔇 Skip everything]
     D -- no --> E[🗂️ Forward to backup group<br/>if backup is on]
-    E --> F{Exact keyword<br/>match?}
-    F -- yes --> G[💬 Send auto-reply<br/>as you]
+    E --> S{Banned word?<br/>chat not trusted}
+    S -- yes --> S1[🚫 Delete both sides<br/>stop here]
+    S -- no --> FL{Flooding?}
+    FL -- yes --> FM[🔇 Auto-mute chat<br/>+ ping you]
+    FL -- no --> F
+    FM --> F{Inside schedule<br/>and keyword match?}
+    F -- yes --> CD{Cooldown<br/>passed?}
+    CD -- yes --> G[💬 Send reply as you<br/>text or media]
+    CD -- no --> H
     F -- no --> H
-    G --> H{🔒 Close DM on?}
+    G --> H{🔒 Close DM on,<br/>inside schedule,<br/>chat allowed?}
     H -- yes --> I[🗑️ Delete for both sides]
     H -- no --> J([✅ Done])
     I --> J
+    S1 --> J
 ```
 
 ### Message sequence
@@ -156,19 +170,30 @@ mindmap
       Topic per sender
       Per-chat mute
     Automation
-      Auto-reply
-        Exact word only
+      Smart auto-reply
+        Exact · contains · regex
+        Cooldown
+        Photo · file · video
       Close DM
-        Delete both sides
+        Whitelist
+        Selected chats only
+      Schedule
+    Protection
+      Spam words
+      Flood guard
+      PIN lock
+    Insight
+      Activity chart
+      System health
+      Error log
     Console
       Light and dark
       7 accent colors
       Lazy loaded chats
-      Animations
     Platform
       Cloudflare Workers
       D1 migrations
-      Workers Builds CI
+      CI lint and tests
 ```
 
 ## ⚡ Quick start
@@ -245,6 +270,7 @@ erDiagram
         TEXT username
         INTEGER muted
         INTEGER added
+        TEXT dm_rule
     }
     TOPICS {
         INTEGER group_id PK
@@ -254,9 +280,42 @@ erDiagram
     AUTOREPLIES {
         TEXT keyword PK
         TEXT reply
+        TEXT match_type
+        INTEGER cooldown_min
+        TEXT media_type
+        TEXT media_url
+    }
+    AUTOREPLY_HITS {
+        TEXT keyword PK
+        INTEGER chat_id PK
+        INTEGER last_at
+    }
+    DAILY_STATS {
+        TEXT day PK
+        INTEGER chat_id PK
+        INTEGER msgs
+        INTEGER replies
+        INTEGER deleted
+    }
+    FLOOD {
+        INTEGER chat_id PK
+        INTEGER window_start
+        INTEGER count
+    }
+    ERROR_LOG {
+        INTEGER id PK
+        INTEGER at
+        TEXT scope
+        TEXT message
     }
     CHATS ||--o{ TOPICS : "has topic per group"
+    CHATS ||--o{ DAILY_STATS : "counted per day"
+    CHATS ||--o| FLOOD : "flood window"
+    AUTOREPLIES ||--o{ AUTOREPLY_HITS : "cooldown per person"
 ```
+
+> [!NOTE]
+> Message **content is never stored**. `daily_stats` holds numbers only, `error_log` holds error descriptions (last 50), `autoreply_hits` and `flood` hold ids and timestamps.
 
 | Command | Purpose |
 |---|---|
@@ -265,8 +324,23 @@ erDiagram
 
 To change the schema, add `migrations/0003_something.sql` and run `npm run db:migrate`. Never edit a migration that has already been applied.
 
-> [!NOTE]
-> Migrations are intentionally **not** run automatically on deploy. A schema change against real data should be a deliberate action.
+> [!IMPORTANT]
+> Migrations are intentionally **not** run automatically on deploy. They are additive, so **run `npm run db:migrate` first, then deploy**: the new code expects the new tables and columns.
+
+## 🧪 Testing & CI
+
+| Command | What it does |
+|---|---|
+| `npm run lint` | ESLint over `src/`, `public/`, `test/`, `scripts/` |
+| `npm test` | Unit tests for the decision logic (auto-reply matching, schedule, Close DM rules, spam, PIN, crypto) |
+| `npm run check` | Lint + unit tests (what CI runs) |
+| `npm run dev:test`, then `npm run smoke` | Integration test: Worker + local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route (38 checks) |
+| `npm run smoke:ui` | Runs the real Mini App in jsdom against that Worker: every tab, the auto-reply editor, the PIN lock flow (23 checks) |
+
+An optional GitHub Actions workflow lives in [`docs/ci.yml.example`](docs/ci.yml.example). Copy it to `.github/workflows/ci.yml` to run `npm run check` on every push and pull request (checks only, it never deploys).
+
+> [!TIP]
+> In Cloudflare **Workers Builds → Build command**, set `npm run check`. A failing test or lint error will then block the deploy instead of shipping a broken Worker.
 
 ## 🧰 Tech stack
 
@@ -276,7 +350,7 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 | Database | Cloudflare D1 (SQLite) |
 | Frontend | Vanilla JS Mini App, no build step, shadcn/ui-style tokens |
 | Auth | Telegram `initData`, owner only |
-| CI/CD | Cloudflare Workers Builds |
+| CI/CD | Cloudflare Workers Builds (deploy), optional GitHub Actions (lint and tests) |
 
 <details>
 <summary><b>📁 Repository layout</b></summary>
@@ -285,13 +359,17 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 .
 ├── src/
 │   ├── index.js        # webhook entry + commands
-│   ├── backup.js       # forwarding, auto-reply, Close DM
-│   ├── api.js          # Mini App REST API
-│   └── lib.js          # Telegram helpers, formatting
+│   ├── backup.js       # forwarding, auto-reply, Close DM, spam, flood, stats
+│   ├── rules.js        # pure decision logic (unit-tested)
+│   ├── api.js          # Mini App REST API + PIN gate
+│   └── lib.js          # Telegram helpers, crypto, formatting
 ├── public/             # Mini App (index.html, app.js, app.css)
 ├── assets/             # README visuals (animated SVGs)
-├── migrations/         # D1 migrations (0001, 0002, ...)
+├── migrations/         # D1 migrations (0001 ... 0007)
+├── test/               # unit tests (node --test)
+├── scripts/            # integration smoke test
 ├── db-legacy/          # old hand-run schema files, reference only
+├── docs/               # optional CI workflow example
 ├── wrangler.toml
 └── set-webhook.ps1
 ```
@@ -310,7 +388,31 @@ No. Messages are forwarded to your group and never written to the database. D1 h
 <details>
 <summary><b>How exactly does auto-reply match?</b></summary>
 
-The **whole message**, trimmed and case-insensitive, must equal a configured keyword. If you set `سلام` → `علیک سلام`, then `سلام` triggers it, but `سلام چطوری` does not.
+Three modes per rule:
+
+- **Exact word**: the whole message (trimmed, case-insensitive) must equal the keyword. With `سلام` → `علیک سلام`, the message `سلام` triggers it but `سلام چطوری` does not.
+- **Contains**: the keyword may appear anywhere in the message.
+- **Regex**: a case-insensitive pattern (max 100 chars). Patterns with nested quantifiers or back-references are refused to prevent catastrophic backtracking.
+
+Exact rules are checked first, then contains, then regex. A **cooldown** (minutes, per person) stops the same person from triggering the same keyword again too soon. Media replies take a direct `https` link and the reply text becomes the caption.
+
+</details>
+
+<details>
+<summary><b>I forgot my console PIN.</b></summary>
+
+The PIN is only a lock on the console, so you can remove it from the database:
+
+```powershell
+npx wrangler d1 execute business_bot --remote --command "DELETE FROM settings WHERE key IN ('pin_hash','pin_fail','pin_lock_until')"
+```
+
+</details>
+
+<details>
+<summary><b>Why does Close DM sometimes fail?</b></summary>
+
+Telegram only allows deleting business messages with the **delete messages** permission and inside its normal delete window. Failures show up under **System health → Recent errors** and you get a (rate-limited) message from the bot.
 
 </details>
 

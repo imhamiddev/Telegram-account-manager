@@ -116,6 +116,15 @@
     return h("div", { class: `alert alert-${variant}` }, icon("alert"), h("div", {}, h("div", { class: "t" }, title), h("div", { class: "d" }, text)));
   }
 
+  // Remove an element once its exit animation ends, with a timer fallback so it can never get stuck
+  // (animations may not run: reduced motion, background tabs, very old WebViews).
+  function removeAfterAnimation(el, ms = 260) {
+    let done = false;
+    const go = () => { if (!done) { done = true; el.remove(); } };
+    el.addEventListener("animationend", go, { once: true });
+    setTimeout(go, ms);
+  }
+
   function toast(msg, kind = "") {
     let box = document.querySelector(".toasts");
     if (!box) { box = h("div", { class: "toasts" }); document.body.append(box); }
@@ -124,14 +133,14 @@
     try { tg?.HapticFeedback?.notificationOccurred(kind === "error" ? "error" : "success"); } catch {}
     setTimeout(() => {
       t.classList.add("leaving");
-      t.addEventListener("animationend", () => t.remove(), { once: true });
+      removeAfterAnimation(t);
     }, 2800);
   }
 
   function openSheet(...content) {
     const close = () => {
       ov.classList.add("closing");
-      ov.addEventListener("animationend", () => ov.remove(), { once: true });
+      removeAfterAnimation(ov);
     };
     const ov = h("div", { class: "overlay", onclick: (e) => e.target === ov && close() },
       h("div", { class: "sheet" }, h("div", { class: "grab" }), content.map((c) => (typeof c === "function" ? c(close) : c))));
@@ -186,7 +195,7 @@
           const r = await api("/lock/verify", { method: "POST", body: { pin } });
           unlockToken = r.token;
           screen.classList.add("closing");
-          screen.addEventListener("animationend", () => screen.remove(), { once: true });
+          removeAfterAnimation(screen);
           unlockPromise = null;
           resolve();
         } catch (e) {
@@ -375,7 +384,7 @@
 
   const ACCENTS = ["red", "green", "yellow", "purple", "pink", "blue", "orange"];
 
-  function appearanceCard(d) {
+  function appearanceCard() {
     const mkThemeOpt = (val, label, ic) => {
       const btn = h("button", { type: "button", class: "theme-opt", "data-active": String(themeMode === val) }, icon(ic), label);
       btn.dataset.val = val;
@@ -571,7 +580,7 @@
       h("div", {}, h("div", { class: "t" }, title), h("div", { class: "d" }, desc)),
       Select(options, d.values[key], async (value) => { await api("/settings/value", { method: "POST", body: { key, value } }); toast("Saved"); }));
     root.replaceChildren(
-      appearanceCard(d),
+      appearanceCard(),
       lockCard(),
       Card("Backup", d.group ? `Group: ${d.group.title}` : "No group set. Send /setgr inside the backup group.", h("div", { class: "list" },
         toggle("backup_enabled", "Forward messages", "Turn off to pause forwarding"),
