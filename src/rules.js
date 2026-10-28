@@ -115,3 +115,28 @@ export function lastDays(n, tz = "Asia/Tehran", now = new Date()) {
   }
   return out.slice(-n);
 }
+
+// ---------- spam filter ----------
+/** "word1, word2\nword3" -> ["word1","word2","word3"] (lowercased, unique, capped). */
+export function parseWordList(raw) {
+  const seen = new Set();
+  for (const part of String(raw ?? "").split(/[\n,،;]+/)) {
+    const w = part.trim().toLowerCase();
+    if (w && w.length <= 50) seen.add(w);
+    if (seen.size >= 200) break;
+  }
+  return [...seen];
+}
+
+/** First banned word contained in `text` (case-insensitive), or null. */
+export function findBannedWord(words, text) {
+  const t = String(text ?? "").toLowerCase();
+  if (!t) return null;
+  return words.find((w) => t.includes(w)) ?? null;
+}
+
+/** The flood guard trips when a chat sends more than `max` messages inside one window. */
+export const floodExceeded = (count, max) => count > max;
+
+/** Trusted ("never delete") chats are exempt from spam deletion and flood muting. */
+export const isTrusted = (chat) => chat?.dm_rule === "keep";

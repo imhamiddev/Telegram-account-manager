@@ -5,7 +5,7 @@ import { isSafeRegex, isMatchType, lastDays } from "./rules.js";
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
-const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_enabled: "0", sched_close_dm: "1", sched_autoreply: "1" };
+const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_enabled: "0", sched_close_dm: "1", sched_autoreply: "1", spam_enabled: "0", flood_enabled: "0" };
 const flagsOf = (cfg) => Object.fromEntries(Object.entries(FLAGS).map(([k, d]) => [k, (cfg[k] ?? d) === "1"]));
 const groupOf = (cfg) => (cfg.group_id ? { id: cfg.group_id, title: cfg.group_title || "Backup group", is_forum: cfg.group_is_forum === "1" } : null);
 const activeConnection = (env) => env.DB.prepare("SELECT id FROM connections WHERE is_enabled=1 LIMIT 1").first();
@@ -20,6 +20,9 @@ const VALUES = {
   sched_start: ["22:00", (v) => HM.test(v)],
   sched_end: ["07:00", (v) => HM.test(v)],
   tz: ["Asia/Tehran", validTz],
+  spam_words: ["", (v) => v.length <= 2000],
+  flood_max: ["10", (v) => /^\d+$/.test(v) && Number(v) >= 3 && Number(v) <= 100],
+  flood_window: ["60", (v) => /^\d+$/.test(v) && Number(v) >= 10 && Number(v) <= 600],
 };
 const valuesOf = (cfg) => Object.fromEntries(Object.entries(VALUES).map(([k, [d]]) => [k, cfg[k] ?? d]));
 
