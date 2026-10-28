@@ -120,13 +120,21 @@ flowchart TD
     C -- نه --> D{چت میوته؟}
     D -- آره --> X3[🔇 همه‌چیز رد میشه]
     D -- نه --> E[🗂️ فوروارد به گروه بکاپ<br/>اگه بکاپ روشنه]
-    E --> F{کلمه دقیقاً<br/>مطابقت داره؟}
-    F -- آره --> G[💬 ارسال ریپلای خودکار<br/>از اکانت تو]
+    E --> S{کلمه ممنوعه؟<br/>چت مورد اعتماد نیست}
+    S -- آره --> S1[🚫 حذف از دو طرف<br/>همینجا تمام]
+    S -- نه --> FL{فلود؟}
+    FL -- آره --> FM[🔇 میوت خودکار چت<br/>و اعلان به تو]
+    FL -- نه --> F
+    FM --> F{توی زمان‌بندی<br/>و کلمه مطابقت داره؟}
+    F -- آره --> CD{کول‌داون<br/>تموم شده؟}
+    CD -- آره --> G[💬 ارسال ریپلای از اکانت تو<br/>متن یا مدیا]
+    CD -- نه --> H
     F -- نه --> H
-    G --> H{🔒 بستن پیوی روشنه؟}
+    G --> H{🔒 بستن پیوی روشنه،<br/>توی زمان‌بندی،<br/>چت مجازه؟}
     H -- آره --> I[🗑️ حذف از دو طرف]
     H -- نه --> J([✅ تمام])
     I --> J
+    S1 --> J
 ```
 
 <div dir="rtl">
@@ -172,19 +180,30 @@ mindmap
       تاپیک برای هر فرستنده
       میوت هر چت
     اتوماسیون
-      ریپلای خودکار
-        فقط کلمه دقیق
+      ریپلای خودکار پیشرفته
+        دقیق · شامل · regex
+        کول‌داون
+        عکس · فایل · ویدیو
       بستن پیوی
-        حذف از دو طرف
+        لیست سفید
+        فقط چت‌های انتخابی
+      زمان‌بندی
+    محافظت
+      کلمات ممنوعه
+      ضد فلود
+      قفل پین
+    بینش
+      نمودار فعالیت
+      سلامت سیستم
+      لاگ خطا
     کنسول
       تم روشن و تاریک
       ۷ رنگ accent
       لودینگ تدریجی
-      انیمیشن
     پلتفرم
       Cloudflare Workers
       مایگریشن D1
-      Workers Builds
+      CI لینت و تست
 ```
 
 <div dir="rtl">
@@ -273,6 +292,7 @@ erDiagram
         TEXT username
         INTEGER muted
         INTEGER added
+        TEXT dm_rule
     }
     TOPICS {
         INTEGER group_id PK
@@ -282,8 +302,38 @@ erDiagram
     AUTOREPLIES {
         TEXT keyword PK
         TEXT reply
+        TEXT match_type
+        INTEGER cooldown_min
+        TEXT media_type
+        TEXT media_url
+    }
+    AUTOREPLY_HITS {
+        TEXT keyword PK
+        INTEGER chat_id PK
+        INTEGER last_at
+    }
+    DAILY_STATS {
+        TEXT day PK
+        INTEGER chat_id PK
+        INTEGER msgs
+        INTEGER replies
+        INTEGER deleted
+    }
+    FLOOD {
+        INTEGER chat_id PK
+        INTEGER window_start
+        INTEGER count
+    }
+    ERROR_LOG {
+        INTEGER id PK
+        INTEGER at
+        TEXT scope
+        TEXT message
     }
     CHATS ||--o{ TOPICS : "has topic per group"
+    CHATS ||--o{ DAILY_STATS : "counted per day"
+    CHATS ||--o| FLOOD : "flood window"
+    AUTOREPLIES ||--o{ AUTOREPLY_HITS : "cooldown per person"
 ```
 
 <div dir="rtl">
