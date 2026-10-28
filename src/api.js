@@ -1,6 +1,6 @@
-import { verifyInitData, loadSettings, setSetting, tg, tgStrict } from "./lib.js";
+import { verifyInitData, loadSettings, setSetting, tg, tgStrict, nowSec, hashPin, verifyPin, signUnlock, checkUnlock } from "./lib.js";
 import { invalidate, logError } from "./backup.js";
-import { isSafeRegex, isMatchType, lastDays } from "./rules.js";
+import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS } from "./rules.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -36,6 +36,43 @@ export async function handleApi(req, env, url) {
   const body = m === "POST" ? await req.json().catch(() => ({})) : {};
 
   try {
+    // ----- console lock: with a PIN set, every route except the lock ones needs a valid X-Unlock token -----
+    const pinRow = await env.DB.prepare("SELECT value FROM settings WHERE key='pin_hash'").first();
+    const hasPin = !!pinRow?.value;
+    const unlocked = hasPin ? await checkUnlock(env, req.headers.get("X-Unlock")) : true;
+    if (hasPin && !unlocked && !["/lock/status", "/lock/verify"].includes(p)) return json({ error: "Locked", locked: true }, 423);
+
+    if (p === "/lock/status" && m === "GET") {
+      const cfg = hasPin ? await loadSettings(env) : {};
+      return json({ enabled: hasPin, unlocked, locked_for: lockoutRemaining(cfg.pin_lock_until, nowSec()) });
+    }
+    if (p === "/lock/verify" && m === "POST") {
+      if (!hasPin) return json({ ok: true, token: null });
+      const cfg = await loadSettings(env), now = nowSec();
+      const wait = lockoutRemaining(cfg.pin_lock_until, now);
+      if (wait > 0) return json({ error: `Too many attempts. Try again in ${Math.ceil(wait / 60)} min`, locked_for: wait }, 429);
+      if (await verifyPin(body.pin, pinRow.value)) {
+        await setSetting(env, "pin_fail", 0);
+        return json({ ok: true, token: await signUnlock(env), expires_in: 900 });
+      }
+      const r = registerPinFailure(cfg.pin_fail, now);
+      await setSetting(env, "pin_fail", r.fails);
+      if (r.lockUntil) await setSetting(env, "pin_lock_until", r.lockUntil);
+      return json({ error: r.lockUntil ? "Too many attempts. Locked for 5 minutes" : `Wrong PIN (${PIN_MAX_FAILS - r.fails} attempts left)`, locked_for: r.lockUntil ? r.lockUntil - now : 0 }, 403);
+    }
+    if (p === "/lock/set" && m === "POST") { // if a PIN already exists, the gate above has required an unlocked session
+      if (!isValidPin(body.pin)) return json({ error: "PIN must be 4 to 8 digits" }, 400);
+      await setSetting(env, "pin_hash", await hashPin(body.pin));
+      await setSetting(env, "pin_fail", 0);
+      return json({ ok: true, token: await signUnlock(env) });
+    }
+    if (p === "/lock/disable" && m === "POST") {
+      if (!hasPin) return json({ ok: true });
+      if (!(await verifyPin(body.pin, pinRow.value))) return json({ error: "Wrong PIN" }, 403);
+      await env.DB.prepare("DELETE FROM settings WHERE key IN ('pin_hash','pin_fail','pin_lock_until')").run();
+      return json({ ok: true });
+    }
+
     if (p === "/overview" && m === "GET") {
       const cfg = await loadSettings(env);
       const conn = await activeConnection(env);
