@@ -239,3 +239,16 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .top-track { height: 6px; border-radius: 3px; background: hsl(var(--muted)); margin-top: 4px; overflow: hidden; }
 .top-bar { height: 100%; width: var(--w); border-radius: 3px; background: hsl(var(--accent)); transform-origin: left; animation: growX .6s var(--ease) both; }
 @keyframes growX { from { transform: scaleX(0); } }
+
+/* System health */
+.health-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 4px 0; }
+.health-row .grow { flex: 1; min-width: 0; }
+.health-row .muted-num { max-width: 55%; text-align: right; overflow-wrap: anywhere; }
+.dot { width: 9px; height: 9px; border-radius: 9999px; flex: none; background: hsl(var(--muted-foreground)); }
+.dot.ok { background: hsl(var(--success)); box-shadow: 0 0 0 3px hsl(var(--success) / .18); }
+.dot.warn { background: hsl(var(--warning)); box-shadow: 0 0 0 3px hsl(var(--warning) / .2); }
+.dot.fail { background: hsl(0 84% 60%); animation: dotPulse 1.6s ease-in-out infinite; }
+@keyframes dotPulse { 0%, 100% { box-shadow: 0 0 0 0 hsl(0 84% 60% / .5); } 50% { box-shadow: 0 0 0 6px hsl(0 84% 60% / 0); } }
+.err-list { display: flex; flex-direction: column; gap: 8px; animation: viewIn .2s var(--ease); }
+.err-item { padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+.err-msg { font-size: 12px; margin-top: 4px; overflow-wrap: anywhere; color: hsl(var(--muted-foreground)); }

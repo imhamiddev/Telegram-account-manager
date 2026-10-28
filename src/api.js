@@ -1,5 +1,5 @@
 import { verifyInitData, loadSettings, setSetting, tg, tgStrict } from "./lib.js";
-import { invalidate } from "./backup.js";
+import { invalidate, logError } from "./backup.js";
 import { isSafeRegex, isMatchType, lastDays } from "./rules.js";
 
 const json = (data, status = 200) =>
@@ -169,6 +169,48 @@ export async function handleApi(req, env, url) {
       });
     }
 
+    if (p === "/health" && m === "GET") {
+      const cfg = await loadSettings(env);
+      const t0 = Date.now();
+      const conn = await activeConnection(env);
+      const dbMs = Date.now() - t0;
+      const dayAgo = Math.floor(Date.now() / 1000) - 86400;
+      const [wh, errs, recent] = await Promise.all([
+        tg(env, "getWebhookInfo", {}),
+        env.DB.prepare("SELECT COUNT(*) n FROM error_log WHERE at >= ?").bind(dayAgo).first(),
+        env.DB.prepare("SELECT id, at, scope, message FROM error_log ORDER BY id DESC LIMIT 15").all(),
+      ]);
+      const info = wh.result || {};
+      const checks = [];
+      const add = (id, label, status, detail) => checks.push({ id, label, status, detail });
+
+      add("db", "Database", dbMs < 500 ? "ok" : "warn", `${dbMs} ms`);
+
+      if (!wh.ok) add("webhook", "Telegram webhook", "fail", wh.description || "Could not reach Telegram");
+      else if (!info.url) add("webhook", "Telegram webhook", "fail", "No webhook is set. Run set-webhook.ps1");
+      else if (new URL(info.url).host !== url.host) add("webhook", "Telegram webhook", "warn", `Points to ${new URL(info.url).host}, not this Worker`);
+      else if (info.last_error_message && info.last_error_date > dayAgo) add("webhook", "Telegram webhook", "warn", `Last error: ${info.last_error_message}`);
+      else if ((info.pending_update_count || 0) > 20) add("webhook", "Telegram webhook", "warn", `${info.pending_update_count} updates waiting`);
+      else add("webhook", "Telegram webhook", "ok", info.pending_update_count ? `${info.pending_update_count} pending` : "Healthy");
+
+      add("account", "Business account", conn ? "ok" : "fail", conn ? "Connected" : "Not connected");
+      add("group", "Backup group", cfg.group_id ? "ok" : "fail", cfg.group_id ? (cfg.group_title || "Set") : "Not set. Send /setgr in the group");
+      const n = errs?.n || 0;
+      add("errors", "Errors (24h)", n === 0 ? "ok" : n > 20 ? "fail" : "warn", n === 0 ? "None" : `${n} logged`);
+
+      const rank = { ok: 0, warn: 1, fail: 2 };
+      const overall = checks.reduce((w, c) => (rank[c.status] > rank[w] ? c.status : w), "ok");
+      const v = env.CF_VERSION_METADATA || null;
+      return json({
+        overall, checks, errors: recent.results,
+        version: v ? { id: String(v.id || "").slice(0, 8), tag: v.tag || null, deployed: v.timestamp ? Math.floor(new Date(v.timestamp).getTime() / 1000) : null } : null,
+      });
+    }
+    if (p === "/errors/clear" && m === "POST") {
+      await env.DB.prepare("DELETE FROM error_log").run();
+      return json({ ok: true });
+    }
+
     if (p === "/test" && m === "POST") {
       const cfg = await loadSettings(env);
       if (!cfg.group_id) return json({ error: "No backup group set" }, 400);
@@ -187,6 +229,7 @@ export async function handleApi(req, env, url) {
 
     return json({ error: "Not found" }, 404);
   } catch (e) {
+    await logError(env, "api", `${m} ${p}: ${e.message}`);
     return json({ error: e.message || "Server error" }, 500);
   }
 }

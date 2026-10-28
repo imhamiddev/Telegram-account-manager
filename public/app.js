@@ -165,6 +165,38 @@
   }
 
   // ---------- views ----------
+  // System health: db latency, webhook, connection, recent errors and the deployed version.
+  function healthCard() {
+    const body = h("div", { class: "stack" }, Skeleton(110));
+    const state = h("span", {});
+    const STATUS = { ok: ["Healthy", "success"], warn: ["Needs attention", "warning"], fail: ["Problem", "destructive"] };
+
+    async function load() {
+      try {
+        const d = await api("/health");
+        const [label, variant] = STATUS[d.overall];
+        state.replaceChildren(Badge(label, variant));
+        const errList = h("div", { class: "err-list", style: "display:none" },
+          ...(d.errors.length ? d.errors.map((e) => h("div", { class: "err-item" },
+            h("div", { class: "row between" }, Badge(e.scope, "secondary"), h("span", { class: "muted-num" }, fmtWhen(e.at))),
+            h("div", { class: "err-msg" }, e.message))) : [Empty("No errors logged. 🎉")]),
+          d.errors.length ? Btn("Clear log", { variant: "outline", size: "sm", ic: "trash", onclick: async () => { await api("/errors/clear", { method: "POST" }); toast("Cleared"); await load(); } }) : null);
+        const toggle = Btn(`Recent errors (${d.errors.length})`, { variant: "ghost", size: "sm", block: true, onclick: () => {
+          const open = errList.style.display === "none";
+          errList.style.display = open ? "" : "none";
+        } });
+        body.replaceChildren(
+          ...d.checks.map((c) => h("div", { class: "health-row" },
+            h("span", { class: "dot " + c.status }), h("span", { class: "grow" }, c.label), h("span", { class: "muted-num" }, c.detail))),
+          d.version ? h("div", { class: "health-row ver" }, h("span", { class: "dot idle" }), h("span", { class: "grow" }, "Deployed version"),
+            h("span", { class: "muted-num mono" }, `${d.version.id}${d.version.deployed ? " · " + fmtWhen(d.version.deployed) : ""}`)) : null,
+          toggle, errList);
+      } catch (e) { body.replaceChildren(Alert({ variant: "destructive", title: "Health check failed", text: e.message })); }
+    }
+    load();
+    return Card("System health", null, body, { action: h("div", { class: "row" }, state, Btn("", { variant: "ghost", size: "sm", ic: "refresh", onclick: load })) });
+  }
+
   // Messages-per-day bar chart + top chats. Numbers only; no message content is ever stored.
   function activityCard() {
     let range = 14;
@@ -219,6 +251,7 @@
         h("div", { class: "row between" }, "Backup group", d.group ? Badge(d.group.title, "outline") : Badge("Not set", "destructive")),
         h("div", { class: "row between" }, "Forwarding", Badge(d.flags.backup_enabled ? "On" : "Paused", d.flags.backup_enabled ? "success" : "warning")),
         h("div", { class: "row between" }, "Topic per sender", Badge(d.flags.topics_enabled ? (d.group?.is_forum ? "On" : "Needs forum") : "Off", d.flags.topics_enabled && d.group?.is_forum ? "success" : "secondary")))),
+      healthCard(),
       activityCard(),
       Card("Privacy", null, h("p", { class: "card-description" }, "Messages are forwarded straight to the backup group. No message content is stored anywhere; the database only holds settings, chat names and activity counters (numbers only).")));
   }
