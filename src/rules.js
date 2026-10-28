@@ -140,3 +140,18 @@ export const floodExceeded = (count, max) => count > max;
 
 /** Trusted ("never delete") chats are exempt from spam deletion and flood muting. */
 export const isTrusted = (chat) => chat?.dm_rule === "keep";
+
+// ---------- console PIN lock ----------
+export const isValidPin = (pin) => /^\d{4,8}$/.test(String(pin ?? ""));
+
+export const PIN_MAX_FAILS = 5;
+export const PIN_LOCKOUT_SEC = 300;
+
+/** Remaining lockout in seconds (0 when not locked out). */
+export const lockoutRemaining = (lockUntil, now) => Math.max(0, (Number(lockUntil) || 0) - now);
+
+/** State after a wrong PIN: after PIN_MAX_FAILS misses the console locks out for PIN_LOCKOUT_SEC and the counter resets. */
+export function registerPinFailure(fails, now) {
+  const n = (Number(fails) || 0) + 1;
+  return n >= PIN_MAX_FAILS ? { fails: 0, lockUntil: now + PIN_LOCKOUT_SEC } : { fails: n, lockUntil: 0 };
+}

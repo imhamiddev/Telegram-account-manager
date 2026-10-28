@@ -203,3 +203,28 @@ test("spam: only 'keep' chats are trusted", () => {
   assert.equal(isTrusted({ dm_rule: "default" }), false);
   assert.equal(isTrusted(undefined), false);
 });
+
+import { isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS, PIN_LOCKOUT_SEC } from "../src/rules.js";
+
+test("pin: format is 4 to 8 digits", () => {
+  for (const ok of ["1234", "123456", "12345678"]) assert.equal(isValidPin(ok), true);
+  for (const bad of ["123", "123456789", "12a4", "", " 1234", undefined, "12.34"]) assert.equal(isValidPin(bad), false);
+});
+
+test("pin: wrong attempts count up, then lock out and reset the counter", () => {
+  let fails = 0, lockUntil = 0;
+  for (let i = 1; i < PIN_MAX_FAILS; i++) {
+    ({ fails, lockUntil } = registerPinFailure(fails, 1000));
+    assert.equal(fails, i);
+    assert.equal(lockUntil, 0);
+  }
+  ({ fails, lockUntil } = registerPinFailure(fails, 1000));
+  assert.equal(fails, 0);
+  assert.equal(lockUntil, 1000 + PIN_LOCKOUT_SEC);
+});
+
+test("pin: lockout remaining never goes negative", () => {
+  assert.equal(lockoutRemaining(1300, 1000), 300);
+  assert.equal(lockoutRemaining(1300, 2000), 0);
+  assert.equal(lockoutRemaining(undefined, 2000), 0);
+});
