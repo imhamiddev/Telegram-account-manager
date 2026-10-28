@@ -118,13 +118,21 @@ flowchart TD
     C -- no --> D{Chat muted?}
     D -- yes --> X3[🔇 Skip everything]
     D -- no --> E[🗂️ Forward to backup group<br/>if backup is on]
-    E --> F{Exact keyword<br/>match?}
-    F -- yes --> G[💬 Send auto-reply<br/>as you]
+    E --> S{Banned word?<br/>chat not trusted}
+    S -- yes --> S1[🚫 Delete both sides<br/>stop here]
+    S -- no --> FL{Flooding?}
+    FL -- yes --> FM[🔇 Auto-mute chat<br/>+ ping you]
+    FL -- no --> F
+    FM --> F{Inside schedule<br/>and keyword match?}
+    F -- yes --> CD{Cooldown<br/>passed?}
+    CD -- yes --> G[💬 Send reply as you<br/>text or media]
+    CD -- no --> H
     F -- no --> H
-    G --> H{🔒 Close DM on?}
+    G --> H{🔒 Close DM on,<br/>inside schedule,<br/>chat allowed?}
     H -- yes --> I[🗑️ Delete for both sides]
     H -- no --> J([✅ Done])
     I --> J
+    S1 --> J
 ```
 
 ### Message sequence
@@ -162,19 +170,30 @@ mindmap
       Topic per sender
       Per-chat mute
     Automation
-      Auto-reply
-        Exact word only
+      Smart auto-reply
+        Exact · contains · regex
+        Cooldown
+        Photo · file · video
       Close DM
-        Delete both sides
+        Whitelist
+        Selected chats only
+      Schedule
+    Protection
+      Spam words
+      Flood guard
+      PIN lock
+    Insight
+      Activity chart
+      System health
+      Error log
     Console
       Light and dark
       7 accent colors
       Lazy loaded chats
-      Animations
     Platform
       Cloudflare Workers
       D1 migrations
-      Workers Builds CI
+      CI lint and tests
 ```
 
 ## ⚡ Quick start
@@ -251,6 +270,7 @@ erDiagram
         TEXT username
         INTEGER muted
         INTEGER added
+        TEXT dm_rule
     }
     TOPICS {
         INTEGER group_id PK
@@ -260,9 +280,42 @@ erDiagram
     AUTOREPLIES {
         TEXT keyword PK
         TEXT reply
+        TEXT match_type
+        INTEGER cooldown_min
+        TEXT media_type
+        TEXT media_url
+    }
+    AUTOREPLY_HITS {
+        TEXT keyword PK
+        INTEGER chat_id PK
+        INTEGER last_at
+    }
+    DAILY_STATS {
+        TEXT day PK
+        INTEGER chat_id PK
+        INTEGER msgs
+        INTEGER replies
+        INTEGER deleted
+    }
+    FLOOD {
+        INTEGER chat_id PK
+        INTEGER window_start
+        INTEGER count
+    }
+    ERROR_LOG {
+        INTEGER id PK
+        INTEGER at
+        TEXT scope
+        TEXT message
     }
     CHATS ||--o{ TOPICS : "has topic per group"
+    CHATS ||--o{ DAILY_STATS : "counted per day"
+    CHATS ||--o| FLOOD : "flood window"
+    AUTOREPLIES ||--o{ AUTOREPLY_HITS : "cooldown per person"
 ```
+
+> [!NOTE]
+> Message **content is never stored**. `daily_stats` holds numbers only, `error_log` holds error descriptions (last 50), `autoreply_hits` and `flood` hold ids and timestamps.
 
 | Command | Purpose |
 |---|---|
@@ -274,6 +327,20 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 > [!NOTE]
 > Migrations are intentionally **not** run automatically on deploy. A schema change against real data should be a deliberate action.
 
+## 🧪 Testing & CI
+
+| Command | What it does |
+|---|---|
+| `npm run lint` | ESLint over `src/`, `public/`, `test/`, `scripts/` |
+| `npm test` | Unit tests for the decision logic (auto-reply matching, schedule, Close DM rules, spam, PIN, crypto) |
+| `npm run check` | Lint + unit tests (what CI runs) |
+| `npm run dev:test` then `npm run smoke` | Integration test: starts the Worker locally with a local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route |
+
+GitHub Actions runs `npm run check` on every push and pull request (checks only, it never deploys).
+
+> [!TIP]
+> In Cloudflare **Workers Builds → Build command**, set `npm run check`. A failing test or lint error will then block the deploy instead of shipping a broken Worker.
+
 ## 🧰 Tech stack
 
 | Layer | Choice |
@@ -282,7 +349,7 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 | Database | Cloudflare D1 (SQLite) |
 | Frontend | Vanilla JS Mini App, no build step, shadcn/ui-style tokens |
 | Auth | Telegram `initData`, owner only |
-| CI/CD | Cloudflare Workers Builds |
+| CI/CD | Cloudflare Workers Builds (deploy) + GitHub Actions (lint and tests) |
 
 <details>
 <summary><b>📁 Repository layout</b></summary>
@@ -291,13 +358,17 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 .
 ├── src/
 │   ├── index.js        # webhook entry + commands
-│   ├── backup.js       # forwarding, auto-reply, Close DM
-│   ├── api.js          # Mini App REST API
-│   └── lib.js          # Telegram helpers, formatting
+│   ├── backup.js       # forwarding, auto-reply, Close DM, spam, flood, stats
+│   ├── rules.js        # pure decision logic (unit-tested)
+│   ├── api.js          # Mini App REST API + PIN gate
+│   └── lib.js          # Telegram helpers, crypto, formatting
 ├── public/             # Mini App (index.html, app.js, app.css)
 ├── assets/             # README visuals (animated SVGs)
-├── migrations/         # D1 migrations (0001, 0002, ...)
+├── migrations/         # D1 migrations (0001 ... 0007)
+├── test/               # unit tests (node --test)
+├── scripts/            # integration smoke test
 ├── db-legacy/          # old hand-run schema files, reference only
+├── .github/workflows/  # CI (lint + tests)
 ├── wrangler.toml
 └── set-webhook.ps1
 ```
