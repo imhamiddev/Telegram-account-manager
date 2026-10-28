@@ -375,7 +375,7 @@
 
   const ACCENTS = ["red", "green", "yellow", "purple", "pink", "blue", "orange"];
 
-  function appearanceCard(d) {
+  function appearanceCard() {
     const mkThemeOpt = (val, label, ic) => {
       const btn = h("button", { type: "button", class: "theme-opt", "data-active": String(themeMode === val) }, icon(ic), label);
       btn.dataset.val = val;
@@ -571,7 +571,7 @@
       h("div", {}, h("div", { class: "t" }, title), h("div", { class: "d" }, desc)),
       Select(options, d.values[key], async (value) => { await api("/settings/value", { method: "POST", body: { key, value } }); toast("Saved"); }));
     root.replaceChildren(
-      appearanceCard(d),
+      appearanceCard(),
       lockCard(),
       Card("Backup", d.group ? `Group: ${d.group.title}` : "No group set. Send /setgr inside the backup group.", h("div", { class: "list" },
         toggle("backup_enabled", "Forward messages", "Turn off to pause forwarding"),
