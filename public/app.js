@@ -425,6 +425,29 @@
       Card("Your rules", null, list, { flush: true }));
   }
 
+  // Spam filter + flood guard. Chats marked "Never delete" in the Chats tab are exempt from both.
+  function spamCard(d, toggle) {
+    const words = h("textarea", { class: "input textarea", rows: "3", placeholder: "One word or phrase per line (or comma separated)" });
+    words.value = d.values.spam_words || "";
+    const num = (key, min, max) => h("input", { class: "input", type: "number", min: String(min), max: String(max), value: d.values[key],
+      onchange: async (e) => {
+        try { await api("/settings/value", { method: "POST", body: { key, value: e.target.value } }); toast("Saved"); }
+        catch (err) { toast(err.message, "error"); e.target.value = d.values[key]; }
+      } });
+    return Card("Spam protection", "Chats set to “Never delete” are exempt", h("div", { class: "stack" },
+      h("div", { class: "list" },
+        toggle("spam_enabled", "Delete messages with banned words", "Removed for both sides, right away"),
+        toggle("flood_enabled", "Auto-mute flooding chats", "Stops backing up and replying to a chat that spams")),
+      Field("Banned words", words),
+      Btn("Save words", { variant: "outline", block: true, onclick: async () => {
+        await api("/settings/value", { method: "POST", body: { key: "spam_words", value: words.value } });
+        d.values.spam_words = words.value; toast("Saved");
+      } }),
+      h("div", { class: "grid2" },
+        Field("Max messages", num("flood_max", 3, 100)),
+        Field("Per seconds", num("flood_window", 10, 600)))));
+  }
+
   // Close DM / auto-reply only run inside this daily window (can wrap past midnight, e.g. 22:00 to 07:00)
   function scheduleCard(d, toggle) {
     const TZ = [["Asia/Tehran", "Tehran"], ["UTC", "UTC"], ["Europe/Istanbul", "Istanbul"], ["Asia/Dubai", "Dubai"], ["Europe/Berlin", "Berlin"], ["Europe/London", "London"], ["America/New_York", "New York"]];
@@ -461,6 +484,7 @@
         selectRow("close_dm_mode", "Close DM applies to", "Whitelist chats from the Chats tab either way",
           [["all", "Everyone except whitelist"], ["selected", "Only chats I pick"]])), { flush: true }),
       scheduleCard(d, toggle),
+      spamCard(d, toggle),
       Card("Auto-reply", "Reply instantly to an exact keyword", h("div", { class: "stack" },
         Btn("Manage auto-replies", { variant: "outline", ic: "reply", block: true, onclick: () => {
           openSheet((close) => {
