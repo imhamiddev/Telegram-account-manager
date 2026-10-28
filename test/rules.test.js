@@ -154,3 +154,23 @@ test("cooldown cutoff", () => {
   assert.equal(cooldownCutoff(1000, -3), 1000);
   assert.equal(cooldownCutoff(1000, "x"), 1000);
 });
+
+import { dayKey, lastDays } from "../src/rules.js";
+
+test("stats: dayKey respects the time zone", () => {
+  const d = new Date("2026-10-27T22:00:00Z"); // 01:30 next day in Tehran
+  assert.equal(dayKey(d, "UTC"), "2026-10-27");
+  assert.equal(dayKey(d, "Asia/Tehran"), "2026-10-28");
+});
+
+test("stats: lastDays returns n consecutive days ending today", () => {
+  const days = lastDays(7, "UTC", new Date("2026-10-27T12:00:00Z"));
+  assert.deepEqual(days, ["2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27"]);
+});
+
+test("stats: lastDays has no duplicates across a month boundary", () => {
+  const days = lastDays(5, "UTC", new Date("2026-11-02T00:30:00Z"));
+  assert.equal(new Set(days).size, 5);
+  assert.equal(days.at(-1), "2026-11-02");
+  assert.equal(days[0], "2026-10-29");
+});

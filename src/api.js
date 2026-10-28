@@ -1,6 +1,6 @@
 import { verifyInitData, loadSettings, setSetting, tg, tgStrict } from "./lib.js";
 import { invalidate } from "./backup.js";
-import { isSafeRegex, isMatchType } from "./rules.js";
+import { isSafeRegex, isMatchType, lastDays } from "./rules.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -149,6 +149,26 @@ export async function handleApi(req, env, url) {
       invalidate();
       return json({ ok: true });
     }
+    if (p === "/stats" && m === "GET") {
+      const cfg = await loadSettings(env);
+      const n = [7, 14, 30].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 14;
+      const days = lastDays(n, cfg.tz || "Asia/Tehran");
+      const since = days[0];
+      // keep the table small: counters older than ~4 months are not useful
+      const prune = lastDays(120, cfg.tz || "Asia/Tehran")[0];
+      const [perDay, top, tot] = await env.DB.batch([
+        env.DB.prepare("SELECT day, SUM(msgs) msgs, SUM(replies) replies, SUM(deleted) deleted FROM daily_stats WHERE day >= ? GROUP BY day").bind(since),
+        env.DB.prepare("SELECT s.chat_id, c.name, c.username, SUM(s.msgs) msgs FROM daily_stats s LEFT JOIN chats c ON c.chat_id = s.chat_id WHERE s.day >= ? GROUP BY s.chat_id ORDER BY msgs DESC LIMIT 5").bind(since),
+        env.DB.prepare("SELECT COALESCE(SUM(msgs),0) msgs, COALESCE(SUM(replies),0) replies, COALESCE(SUM(deleted),0) deleted FROM daily_stats WHERE day >= ?").bind(since),
+      ]);
+      await env.DB.prepare("DELETE FROM daily_stats WHERE day < ?").bind(prune).run().catch(() => {}); // awaited: un-awaited work can be cancelled once the response is sent
+      const byDay = new Map(perDay.results.map((r) => [r.day, r]));
+      return json({
+        days: days.map((day) => ({ day, msgs: byDay.get(day)?.msgs ?? 0, replies: byDay.get(day)?.replies ?? 0, deleted: byDay.get(day)?.deleted ?? 0 })),
+        top: top.results, totals: tot.results[0], range: n,
+      });
+    }
+
     if (p === "/test" && m === "POST") {
       const cfg = await loadSettings(env);
       if (!cfg.group_id) return json({ error: "No backup group set" }, 400);

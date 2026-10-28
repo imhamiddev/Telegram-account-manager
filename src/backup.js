@@ -1,5 +1,5 @@
 import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec } from "./lib.js";
-import { shouldCloseDm, scheduleActive, buildRules, matchAutoreply, cooldownCutoff } from "./rules.js";
+import { shouldCloseDm, scheduleActive, buildRules, matchAutoreply, cooldownCutoff, dayKey } from "./rules.js";
 
 // ---------- in-memory state cache (keeps the hot path free of DB reads) ----------
 let cache = null, cacheAt = 0;
@@ -156,6 +156,14 @@ async function sendAutoreply(env, m, rule) {
   return tgStrict(env, "sendMessage", { ...base, text: rule.reply });
 }
 
+// ---------- activity counters (numbers only, never content) ----------
+async function bumpStats(env, st, chatId, replies, deleted) {
+  await env.DB.prepare(
+    "INSERT INTO daily_stats(day,chat_id,msgs,replies,deleted) VALUES(?,?,1,?,?) " +
+    "ON CONFLICT(day,chat_id) DO UPDATE SET msgs=msgs+1, replies=replies+excluded.replies, deleted=deleted+excluded.deleted")
+    .bind(dayKey(new Date(), st.cfg.tz || "Asia/Tehran"), chatId, replies, deleted).run();
+}
+
 // ---------- entry points ----------
 export async function onBusinessMessage(env, m, edited) {
   const st = await getState(env);
@@ -167,6 +175,7 @@ export async function onBusinessMessage(env, m, edited) {
 
   const name = displayName(m.from), username = m.from?.username ?? null;
   const tasks = [];
+  let replied = 0, deleted = 0;
   if (st.cfg.group_id && st.cfg.backup_enabled !== "0") {
     const x = extract(m);
     tasks.push(
@@ -182,17 +191,20 @@ export async function onBusinessMessage(env, m, edited) {
   // Auto-reply (exact / contains / regex), skipped for edits and outside the schedule.
   if (!edited && scheduleActive(st.cfg, "autoreply")) {
     const rule = matchAutoreply(st.autoreplies, m.text ?? m.caption);
-    if (rule) tasks.push(sendAutoreply(env, m, rule).catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`)));
+    if (rule) tasks.push(sendAutoreply(env, m, rule).then((sent) => { if (sent) replied = 1; })
+      .catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`)));
   }
 
   // Close DM: delete the incoming message for both sides immediately after it's handled above.
   if (shouldCloseDm(st.cfg, chat) && scheduleActive(st.cfg, "close_dm")) {
     tasks.push(
       tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
+        .then(() => { deleted = 1; })
         .catch((e) => notifyOwner(env, `Close DM: couldn't delete a message (${e.message})`)));
   }
 
   await Promise.all(tasks);
+  if (!edited) await bumpStats(env, st, m.chat.id, replied, deleted).catch((e) => notifyOwner(env, `Stats update failed: ${e.message}`));
 }
 
 export async function onDeleted(env, d) {
