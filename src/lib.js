@@ -90,3 +90,44 @@ export async function verifyInitData(env, initData) {
     return null;
   }
 }
+
+// ---- Console PIN lock ----
+const te = new TextEncoder();
+const toHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+const fromHex = (hex) => new Uint8Array((hex.match(/../g) || []).map((x) => parseInt(x, 16)));
+export function safeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// PBKDF2-SHA256 (100k iterations is the maximum Workers allows). Stored as "saltHex:hashHex".
+async function pbkdf2(pin, salt) {
+  const key = await crypto.subtle.importKey("raw", te.encode(pin), "PBKDF2", false, ["deriveBits"]);
+  return toHex(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100000 }, key, 256));
+}
+export async function hashPin(pin) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return `${toHex(salt)}:${await pbkdf2(pin, salt)}`;
+}
+export async function verifyPin(pin, stored) {
+  const [salt, hash] = String(stored || "").split(":");
+  if (!salt || !hash) return false;
+  return safeEqual(await pbkdf2(String(pin), fromHex(salt)), hash);
+}
+
+// Short-lived unlock token: "<expiry>.<HMAC>", keyed from the bot token, so the server can verify it statelessly.
+async function unlockMac(env, msg) {
+  const key = await crypto.subtle.importKey("raw", te.encode("unlock:" + env.BOT_TOKEN), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, te.encode(msg)));
+}
+export async function signUnlock(env, ttlSec = 900) {
+  const exp = nowSec() + ttlSec;
+  return `${exp}.${await unlockMac(env, String(exp))}`;
+}
+export async function checkUnlock(env, token) {
+  const [exp, sig] = String(token || "").split(".");
+  if (!exp || !sig || !(Number(exp) > nowSec())) return false;
+  return safeEqual(await unlockMac(env, exp), sig);
+}
