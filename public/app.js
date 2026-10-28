@@ -147,11 +147,9 @@
     try { const p = pf.formatToParts(new Date(ts * 1000)); return `${pick(p, "year")}/${pick(p, "month")}/${pick(p, "day")}`; }
     catch { return new Date(ts * 1000).toISOString().slice(0, 10); }
   }
-  const fmtShort = (ts) => fmtDate(ts).slice(5);
   const fmtTime = (ts) => tf.format(new Date(ts * 1000));
   const fmtWhen = (ts) => `${fmtDate(ts)} · ${fmtTime(ts)}`;
   const initials = (n) => (n || "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-  const nf = (n) => Number(n || 0).toLocaleString("en-US");
   const prettyRight = (k) => k.replace(/^can_/, "").replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
   // ---------- API ----------
