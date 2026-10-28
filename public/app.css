@@ -207,3 +207,6 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 /* compact select used inside list rows */
 .select-sm, .item .select { height: 30px; font-size: 12px; margin-top: 6px; padding: 0 8px; width: auto; max-width: 100%; }
 .setting .select { width: auto; min-width: 150px; height: 32px; font-size: 12px; }
+
+.time-pair { display: flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); }
+.time-pair .input { width: 96px; height: 32px; padding: 0 8px; font-size: 12px; }

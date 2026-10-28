@@ -310,6 +310,24 @@
       Card("Your keywords", null, list, { flush: true }));
   }
 
+  // Close DM / auto-reply only run inside this daily window (can wrap past midnight, e.g. 22:00 to 07:00)
+  function scheduleCard(d, toggle) {
+    const TZ = [["Asia/Tehran", "Tehran"], ["UTC", "UTC"], ["Europe/Istanbul", "Istanbul"], ["Asia/Dubai", "Dubai"], ["Europe/Berlin", "Berlin"], ["Europe/London", "London"], ["America/New_York", "New York"]];
+    const save = (key) => async (e) => {
+      try { await api("/settings/value", { method: "POST", body: { key, value: e.target.value } }); toast("Saved"); }
+      catch (err) { toast(err.message, "error"); }
+    };
+    const time = (key) => h("input", { class: "input", type: "time", value: d.values[key], onchange: save(key) });
+    return Card("Schedule", "Run Close DM and auto-reply only during these hours", h("div", { class: "list" },
+      toggle("sched_enabled", "Use a schedule", "Off = always active"),
+      h("div", { class: "setting" }, h("div", {}, h("div", { class: "t" }, "Active hours"), h("div", { class: "d" }, "From and until (can pass midnight)")),
+        h("div", { class: "time-pair" }, time("sched_start"), h("span", {}, "→"), time("sched_end"))),
+      h("div", { class: "setting" }, h("div", {}, h("div", { class: "t" }, "Time zone")),
+        Select(TZ, TZ.some(([v]) => v === d.values.tz) ? d.values.tz : "Asia/Tehran", async (value) => { await api("/settings/value", { method: "POST", body: { key: "tz", value } }); toast("Saved"); })),
+      toggle("sched_close_dm", "Apply to Close DM", "Outside the hours, messages are kept"),
+      toggle("sched_autoreply", "Apply to auto-reply", "Outside the hours, no auto-replies are sent")), { flush: true });
+  }
+
   async function viewSettings(root) {
     const d = await api("/settings");
     themeMode = d.theme || "system"; accent = d.accent || "blue";
@@ -327,6 +345,7 @@
         toggle("close_dm", "Close DM (auto-delete)", "Instantly deletes every incoming private message for both sides"),
         selectRow("close_dm_mode", "Close DM applies to", "Whitelist chats from the Chats tab either way",
           [["all", "Everyone except whitelist"], ["selected", "Only chats I pick"]])), { flush: true }),
+      scheduleCard(d, toggle),
       Card("Auto-reply", "Reply instantly to an exact keyword", h("div", { class: "stack" },
         Btn("Manage auto-replies", { variant: "outline", ic: "reply", block: true, onclick: () => {
           openSheet((close) => {
