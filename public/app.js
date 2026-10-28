@@ -477,6 +477,49 @@
       Card("Your rules", null, list, { flush: true }));
   }
 
+  // PIN lock for the console (the server enforces it; this card only manages it).
+  function lockCard() {
+    const box = h("div", { class: "stack" });
+    const pinInput = (ph) => h("input", { class: "input", type: "password", inputmode: "numeric", autocomplete: "off", maxlength: "8", placeholder: ph });
+
+    function setPinSheet() {
+      openSheet((close) => {
+        const a = pinInput("4 to 8 digits"), b = pinInput("Repeat the PIN");
+        return h("div", { class: "stack" },
+          h("h3", { class: "card-title" }, lockEnabled ? "Change PIN" : "Set a PIN"),
+          Field("New PIN", a), Field("Repeat PIN", b),
+          Btn("Save PIN", { block: true, onclick: async () => {
+            if (a.value !== b.value) throw new Error("The PINs don't match");
+            const r = await api("/lock/set", { method: "POST", body: { pin: a.value } });
+            unlockToken = r.token; lockEnabled = true;
+            toast("PIN saved"); close(); render();
+          } }));
+      });
+    }
+    function disableSheet() {
+      openSheet((close) => {
+        const cur = pinInput("Current PIN");
+        return h("div", { class: "stack" },
+          h("h3", { class: "card-title" }, "Turn off PIN lock"),
+          Field("Current PIN", cur),
+          Btn("Turn off", { variant: "destructive", block: true, onclick: async () => {
+            await api("/lock/disable", { method: "POST", body: { pin: cur.value } });
+            unlockToken = null; lockEnabled = false;
+            toast("PIN lock is off"); close(); render();
+          } }));
+      });
+    }
+    function render() {
+      box.replaceChildren(
+        h("div", { class: "row between" }, "Status", Badge(lockEnabled ? "On" : "Off", lockEnabled ? "success" : "secondary")),
+        lockEnabled
+          ? h("div", { class: "grid2" }, Btn("Change PIN", { variant: "outline", onclick: setPinSheet }), Btn("Turn off", { variant: "outline", onclick: disableSheet }))
+          : Btn("Set a PIN", { block: true, onclick: setPinSheet }));
+    }
+    render();
+    return Card("Console lock", "Ask for a PIN when the console opens and after 30 seconds in the background", box);
+  }
+
   // Spam filter + flood guard. Chats marked "Never delete" in the Chats tab are exempt from both.
   function spamCard(d, toggle) {
     const words = h("textarea", { class: "input textarea", rows: "3", placeholder: "One word or phrase per line (or comma separated)" });
@@ -529,6 +572,7 @@
       Select(options, d.values[key], async (value) => { await api("/settings/value", { method: "POST", body: { key, value } }); toast("Saved"); }));
     root.replaceChildren(
       appearanceCard(d),
+      lockCard(),
       Card("Backup", d.group ? `Group: ${d.group.title}` : "No group set. Send /setgr inside the backup group.", h("div", { class: "list" },
         toggle("backup_enabled", "Forward messages", "Turn off to pause forwarding"),
         toggle("topics_enabled", "Topic per sender", "Requires a forum group with Manage Topics"),
