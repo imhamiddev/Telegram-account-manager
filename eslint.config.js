@@ -6,7 +6,7 @@ export default [
   js.configs.recommended,
   { files: ["src/**/*.js"], languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.serviceworker } } },
   { files: ["public/**/*.js"], languageOptions: { ecmaVersion: 2023, sourceType: "script", globals: { ...globals.browser } } },
-  { files: ["test/**/*.js", "eslint.config.js"], languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node } } },
+  { files: ["test/**/*.js", "scripts/**/*.mjs", "eslint.config.js"], languageOptions: { ecmaVersion: 2023, sourceType: "module", globals: { ...globals.node } } },
   {
     rules: {
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", caughtErrors: "none" }],
