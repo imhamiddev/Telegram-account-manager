@@ -409,12 +409,12 @@
       });
     }
 
-    function toggle(c) { if (picked.has(c.chat_id)) picked.delete(c.chat_id); else picked.add(c.chat_id); redraw(); }
+    function toggle(c) { if (picked.has(c.chat_id)) picked.delete(c.chat_id); else picked.add(c.chat_id); redraw(); drawBulk(); }
     function drawBulk() {
       bulk.style.display = selecting ? "flex" : "none";
       bulk.replaceChildren(
         h("span", { class: "bulk-count" }, `${picked.size} selected`),
-        Btn("All", { variant: "outline", size: "sm", onclick: () => { items.forEach((c) => picked.add(c.chat_id)); redraw(); } }),
+        Btn("All", { variant: "outline", size: "sm", onclick: () => { items.forEach((c) => picked.add(c.chat_id)); redraw(); drawBulk(); } }),
         Btn("Delete", { variant: "destructive", size: "sm", ic: "trash", disabled: !picked.size, onclick: () => confirmBulk() }));
     }
     // Deletes the picked chats in batches of 10 (topics first), reporting progress. Failures stay selected.
