@@ -12,7 +12,7 @@
     "test": "node --test",
     "lint": "eslint .",
     "check": "npm run lint && npm test",
-    "dev:test": "wrangler dev --local --port 8787 --var BOT_TOKEN:123456:TESTTOKEN --var WEBHOOK_SECRET:s3cret",
+    "dev:test": "wrangler dev --local --port 8787 --var BOT_TOKEN:123456:TESTTOKEN --var WEBHOOK_SECRET:s3cret --var TG_API:http://127.0.0.1:8788 --test-scheduled",
     "smoke": "node scripts/smoke.mjs",
     "smoke:ui": "node scripts/ui-smoke.mjs"
   },

@@ -8,7 +8,8 @@ export class TgError extends Error {
   constructor(description, code) { super(description); this.code = code; }
 }
 
-const api = (env, method) => `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`;
+// TG_API only exists in local tests, where it points at a fake Telegram server.
+const api = (env, method) => `${env.TG_API || "https://api.telegram.org"}/bot${env.BOT_TOKEN}/${method}`;
 
 // Throws on failure
 export async function tgStrict(env, method, body) {
