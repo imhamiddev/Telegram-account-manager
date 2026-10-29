@@ -155,7 +155,7 @@ sequenceDiagram
     and auto-reply
         W->>T: sendMessage "علیک سلام"
     and close DM
-        W->>T: deleteMessage
+        W->>T: deleteBusinessMessages
     end
     T-->>S: reply arrives, original message gone
 ```

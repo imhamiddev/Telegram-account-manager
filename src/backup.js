@@ -99,6 +99,16 @@ async function call(env, method, body) {
   }
 }
 
+// Business messages are deleted with deleteBusinessMessages (the plain deleteMessage looks in the bot's own chats and
+// answers "message to delete not found"). Needs the business bot right "Delete messages" (can_delete_all_messages).
+function deleteIncoming(env, m) {
+  return tgStrict(env, "deleteBusinessMessages", { business_connection_id: m.business_connection_id, message_ids: [m.message_id] })
+    .catch((e) => {
+      if (/not enough rights|can_delete|rights/i.test(e.message)) e.message += ". In Telegram → Settings → Business → Chatbots, allow the bot to delete messages";
+      throw e;
+    });
+}
+
 async function getThread(env, st, gid, chatId, name) {
   if (st.cfg.topics_enabled !== "1" || st.cfg.group_is_forum !== "1") return null;
   const key = `${gid}:${chatId}`;
@@ -221,7 +231,7 @@ export async function onBusinessMessage(env, m, edited) {
   if (st.cfg.spam_enabled === "1" && !isTrusted(chat) && findBannedWord(st.spamWords, m.text ?? m.caption)) {
     removed = true;
     tasks.push(
-      tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
+      deleteIncoming(env, m)
         .then(() => { deleted = 1; })
         .catch((e) => notifyOwner(env, `Spam filter: couldn't delete a message (${e.message})`, "spam")));
   }
@@ -240,7 +250,7 @@ export async function onBusinessMessage(env, m, edited) {
   // Close DM: delete the incoming message for both sides immediately after it's handled above.
   if (!removed && shouldCloseDm(st.cfg, chat) && scheduleActive(st.cfg, "close_dm")) {
     tasks.push(
-      tgStrict(env, "deleteMessage", { business_connection_id: m.business_connection_id, chat_id: m.chat.id, message_id: m.message_id })
+      deleteIncoming(env, m)
         .then(() => { deleted = 1; })
         .catch((e) => notifyOwner(env, `Close DM: couldn't delete a message (${e.message})`, "close-dm")));
   }
