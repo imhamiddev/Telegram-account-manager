@@ -41,6 +41,23 @@ ok("chats: rows render with rule selector", w.document.querySelectorAll(".item s
 const sel = w.document.querySelector(".item select"); sel.value = "keep"; sel.dispatchEvent(new w.Event("change")); await wait(800);
 ok("chats: changing rule saves (no error toast)", !w.document.querySelector(".toast.error"));
 
+// delete chat: trash button opens a confirm sheet; the refused-topic path offers "remove anyway"
+const rowsBefore = w.document.querySelectorAll(".item.static").length;
+const trash = w.document.querySelector(".item.static .row-actions .btn");
+ok("chats: row has a delete button", !!trash);
+if (trash) {
+  trash.click(); await wait(300);
+  ok("chats: delete opens a confirm sheet", /Delete this chat/.test(w.document.querySelector(".sheet")?.textContent || ""), text());
+  [...w.document.querySelectorAll(".sheet button")].find((b) => /Delete everything/.test(b.textContent))?.click(); await wait(1500);
+  const sheetText = w.document.querySelector(".sheet")?.textContent || "";
+  const removed = w.document.querySelectorAll(".item.static").length < rowsBefore;
+  if (!removed) {
+    ok("chats: refused topic delete offers remove-anyway", /Remove anyway/.test(sheetText), sheetText);
+    [...w.document.querySelectorAll(".sheet button")].find((b) => /Remove from database only/.test(b.textContent))?.click(); await wait(1500);
+  }
+  ok("chats: row disappears after deleting", w.document.querySelectorAll(".item.static").length < rowsBefore);
+}
+
 await clickNav("Account");
 ok("account: loads", !text().includes("Couldn't load"), text());
 

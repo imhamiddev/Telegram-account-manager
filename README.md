@@ -45,6 +45,7 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 | 🕒 | **Schedule** | Run Close DM and auto-reply only during chosen hours (overnight windows and time zones supported) |
 | 💬 | **Smart auto-reply** | Exact word, *contains* or **regex** matching, per-person **cooldown**, optional photo/file/video |
 | 🚫 | **Spam protection** | Delete messages with banned words, and auto-mute chats that flood you |
+| 🗑 | **Delete chat** | One tap removes a chat from the console, deletes its forum topic (and every message in it) and erases its rows, so you stay under Telegram's topic limit |
 | 🔐 | **Console PIN lock** | PBKDF2-hashed PIN enforced by the server, brute-force lockout, auto-lock in background |
 | 📊 | **Activity chart** | Messages per day (7/14/30d), replies, deletions and your most active chats. Counters only |
 | 🩺 | **System health** | DB latency, webhook status, connection, last errors and the deployed version |
@@ -71,7 +72,7 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 **Console tabs**
 
 - **Overview**: status, system health, activity chart
-- **Chats**: search, mute, per-chat Close DM rule, infinite scroll
+- **Chats**: search, mute, per-chat Close DM rule, delete chat + its topic, infinite scroll
 - **Account**: connection status and granted permissions
 - **Settings**: theme, PIN lock, Close DM, schedule, spam, auto-replies
 
@@ -335,7 +336,7 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 | `npm test` | Unit tests for the decision logic (auto-reply matching, schedule, Close DM rules, spam, PIN, crypto) |
 | `npm run check` | Lint + unit tests (what CI runs) |
 | `npm run dev:test`, then `npm run smoke` | Integration test: Worker + local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route (38 checks) |
-| `npm run smoke:ui` | Runs the real Mini App in jsdom against that Worker: every tab, the auto-reply editor, the PIN lock flow (23 checks) |
+| `npm run smoke:ui` | Runs the real Mini App in jsdom against that Worker: every tab, the auto-reply editor, the PIN lock flow (26 checks) |
 
 An optional GitHub Actions workflow lives in [`docs/ci.yml.example`](docs/ci.yml.example). Copy it to `.github/workflows/ci.yml` to run `npm run check` on every push and pull request (checks only, it never deploys).
 
