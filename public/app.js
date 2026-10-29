@@ -542,6 +542,11 @@
     const cdInput = h("input", { class: "input", type: "number", min: "0", max: "10080", placeholder: "0 = no cooldown" });
     const urlInput = h("input", { class: "input", placeholder: "https://… direct link to the image/file" });
     const fromInput = h("input", { class: "input", type: "time" }), toInput = h("input", { class: "input", type: "time" });
+    const fuMin = h("input", { class: "input", type: "number", min: "0", max: "10080", placeholder: "0 = no follow-up", oninput: () => showFollowup() });
+    const fuText = h("textarea", { class: "input textarea", rows: "2", placeholder: "Sent only if you haven't answered by then" });
+    const fuField = Field("Follow-up message", fuText);
+    function showFollowup() { fuField.style.display = Number(fuMin.value) > 0 ? "" : "none"; }
+    showFollowup();
     const matchSel = Select(MATCH, "exact", () => hint());
     const mediaSel = Select(MEDIA, "", () => { urlField.style.display = mediaSel.value ? "" : "none"; });
     const chatSel = h("select", { class: "select" });
@@ -568,7 +573,7 @@
     const list = h("div", { class: "list" });
     function reset() {
       editingId = null; kwInput.value = ""; rpInput.value = ""; cdInput.value = ""; urlInput.value = ""; mediaSel.value = "";
-      fromInput.value = ""; toInput.value = ""; matchSel.value = "exact"; fillChats(); chatSel.value = "";
+      fromInput.value = ""; toInput.value = ""; matchSel.value = "exact"; fillChats(); chatSel.value = ""; fuMin.value = ""; fuText.value = ""; showFollowup();
       urlField.style.display = "none"; cancelBtn.style.display = "none"; saveBtn.lastChild.textContent = "Save rule"; hint();
     }
     function edit(r) {
@@ -578,6 +583,7 @@
       matchSel.value = r.match_type || "exact"; mediaSel.value = r.media_type || ""; urlInput.value = r.media_url || "";
       fillChats(r.chat_id != null ? r : null); chatSel.value = r.chat_id != null ? String(r.chat_id) : "";
       fromInput.value = r.hours_start || ""; toInput.value = r.hours_end || "";
+      fuMin.value = r.followup_min || ""; fuText.value = r.followup_text || ""; showFollowup();
       urlField.style.display = mediaSel.value ? "" : "none"; cancelBtn.style.display = ""; saveBtn.lastChild.textContent = "Update rule"; hint();
       root.closest(".sheet")?.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -585,8 +591,10 @@
       const keyword = kwInput.value.trim(), reply = rpInput.value.trim();
       if (!keyword || !reply) return toast("Fill in the keyword and the reply", "error");
       if (!!fromInput.value !== !!toInput.value) return toast("Set both the start and the end hour, or clear both", "error");
+      if (Number(fuMin.value) > 0 && !fuText.value.trim()) return toast("Write the follow-up message", "error");
       const body = { id: editingId, keyword, reply, match_type: matchSel.value, cooldown_min: Number(cdInput.value) || 0, media_type: mediaSel.value || null, media_url: urlInput.value.trim() || null,
-        chat_id: chatSel.value || null, hours_start: fromInput.value || null, hours_end: toInput.value || null };
+        chat_id: chatSel.value || null, hours_start: fromInput.value || null, hours_end: toInput.value || null,
+        followup_min: Number(fuMin.value) || 0, followup_text: fuText.value.trim() || null };
       await api("/autoreplies", { method: "POST", body });
       Object.assign(d, await api("/autoreplies"));
       reset(); toast("Saved"); draw();
@@ -602,6 +610,7 @@
               r.chat_id != null && Badge("👤 " + (r.chat_name || "Chat"), "outline"),
               r.hours_start && Badge(`🕒 ${r.hours_start}–${r.hours_end}`, "outline"),
               r.cooldown_min > 0 && Badge("⏱ " + r.cooldown_min + " min", "outline"),
+              r.followup_min > 0 && Badge("↪ follow-up " + r.followup_min + " min", "outline"),
               r.media_type && Badge("📎 " + (MEDIA_LABEL[r.media_type] || r.media_type), "outline"))),
           Btn("", { variant: "ghost", size: "sm", ic: "trash", onclick: async () => {
             await api("/autoreplies/delete", { method: "POST", body: { id: r.id } });
@@ -621,6 +630,7 @@
         Field("Only between (optional, your timezone)", h("div", { class: "time-pair" }, fromInput, h("span", {}, "to"), toInput,
           Btn("Always", { variant: "ghost", size: "sm", onclick: () => { fromInput.value = ""; toInput.value = ""; } }))),
         Field("Cooldown (minutes, per person)", cdInput),
+        Field("Follow up if I haven't answered after (minutes)", fuMin), fuField,
         Field("Attach", mediaSel),
         urlField,
         saveBtn, cancelBtn)),
