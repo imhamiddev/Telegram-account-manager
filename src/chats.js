@@ -46,8 +46,7 @@ export async function runCleanup(env) {
     const r = await deleteChat(env, c.chat_id);
     if (r.ok) removed++; else { failed++; firstError ||= r.error; }
   }
-  if (removed || failed) {
-    await notifyOwner(env, `🧹 Auto cleanup removed ${removed} inactive chat(s) (no messages for ${days}+ days)${failed ? `; ${failed} could not be removed: ${firstError}` : ""}`, "cleanup");
-  }
+  if (failed) await notifyOwner(env, `Auto cleanup: ${failed} chat(s) could not be removed (${firstError})`, "cleanup");
+  if (removed) await tg(env, "sendMessage", { chat_id: env.OWNER_ID, text: `🧹 Auto cleanup removed ${removed} inactive chat(s) (no messages for ${days}+ days).` });
   return { removed, failed, skipped: false };
 }

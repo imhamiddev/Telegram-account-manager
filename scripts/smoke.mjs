@@ -6,7 +6,7 @@ const BASE = process.env.SMOKE_BASE || "http://127.0.0.1:8787", TOKEN = "123456:
 
 // fresh local database with every migration applied + a fake business connection and backup group
 execSync("npx wrangler d1 migrations apply business_bot --local", { stdio: "ignore" });
-execSync(`npx wrangler d1 execute business_bot --local --command "DELETE FROM settings; DELETE FROM chats; DELETE FROM autoreplies; DELETE FROM autoreply_hits; DELETE FROM daily_stats; DELETE FROM flood; DELETE FROM error_log; DELETE FROM connections; INSERT INTO connections(id,is_enabled) VALUES('c1',1); INSERT INTO settings(key,value) VALUES('group_id','-100123'),('group_title','Test group'),('backup_enabled','1');"`, { stdio: "ignore" });
+execSync(`npx wrangler d1 execute business_bot --local --command "DELETE FROM settings; DELETE FROM chats; DELETE FROM autoreplies; DELETE FROM autoreply_hits; DELETE FROM daily_stats; DELETE FROM flood; DELETE FROM followups; DELETE FROM error_log; DELETE FROM connections; INSERT INTO connections(id,is_enabled) VALUES('c1',1); INSERT INTO settings(key,value) VALUES('group_id','-100123'),('group_title','Test group'),('backup_enabled','1');"`, { stdio: "ignore" });
 const initData = (() => {
   const p = new URLSearchParams({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: OWNER, first_name: "Owner" }) });
   const dcs = [...p.entries()].map(([k, v]) => `${k}=${v}`).sort().join("\n");
@@ -75,6 +75,27 @@ r = await api("POST", "/chats/pin", { chat_id: 996, pinned: true }); ok("pin a c
 r = await api("GET", "/chats?sort=name&limit=10"); ok("pinned chat sorts first", r.body.items?.[0]?.chat_id === 996 && r.body.items[0].pinned === 1, JSON.stringify(r.body.items?.[0]));
 r = await api("POST", "/chats/pin", { chat_id: 996, pinned: false }); r = await api("GET", "/chats?sort=name&limit=10");
 ok("sort by name A-Z", r.body.items.map((c) => c.name).join() === [...r.body.items.map((c) => c.name)].sort((x, y) => x.localeCompare(y, "en", { sensitivity: "base" })).join(), JSON.stringify(r.body.items.map((c) => c.name)));
+
+// bulk delete, auto cleanup of inactive chats, topic counter
+const sql = (q) => execSync(`npx wrangler d1 execute business_bot --local --command "${q}"`, { stdio: "ignore" });
+await hook(msg(901, "a")); await hook(msg(902, "b")); await hook(msg(903, "c")); await hook(msg(904, "d")); await wait(2500);
+r = await api("POST", "/chats/delete-many", { chat_ids: [] }); ok("bulk delete rejects an empty selection", r.status === 400);
+r = await api("POST", "/chats/delete-many", { chat_ids: [901, 902, "x"] }); ok("bulk delete removes the picked chats", r.status === 200 && r.body.deleted === 2 && r.body.failed.length === 0, JSON.stringify(r));
+r = await api("GET", "/chats?limit=100"); ok("bulk deleted chats are gone, others stay", !r.body.items.some((c) => [901, 902].includes(c.chat_id)) && r.body.items.some((c) => c.chat_id === 903));
+r = await api("POST", "/settings/value", { key: "cleanup_days", value: "6" }); ok("reject cleanup below 7 days", r.status === 400);
+r = await api("POST", "/settings/value", { key: "cleanup_days", value: "30" }); ok("set cleanup days", r.status === 200);
+r = await api("POST", "/cleanup/run"); ok("cleanup does nothing while disabled", r.status === 200 && r.body.skipped === true, JSON.stringify(r.body));
+await api("POST", "/settings", { key: "cleanup_enabled", value: true });
+sql("UPDATE chats SET last_at = strftime('%s','now') - 100*86400 WHERE chat_id IN (903,904); UPDATE chats SET pinned = 1 WHERE chat_id = 904;");
+r = await api("POST", "/cleanup/run"); ok("cleanup removes the inactive chat", r.status === 200 && r.body.removed === 1 && r.body.failed === 0, JSON.stringify(r.body));
+r = await api("GET", "/chats?limit=100"); ok("inactive chat deleted, pinned inactive chat kept", !r.body.items.some((c) => c.chat_id === 903) && r.body.items.some((c) => c.chat_id === 904));
+await api("POST", "/settings", { key: "cleanup_enabled", value: false });
+sql("INSERT OR REPLACE INTO topics(group_id,chat_id,thread_id) VALUES(-100123,904,77);");
+await api("POST", "/settings/value", { key: "topic_limit", value: "1" });
+r = await api("GET", "/health"); const tc = r.body.checks?.find((c) => c.id === "topics"); ok("topic counter shows a warning at the limit", tc?.status === "fail" && /1 of 1/.test(tc.detail), JSON.stringify(tc));
+sql("DELETE FROM topics WHERE chat_id = 904; UPDATE chats SET pinned = 0 WHERE chat_id = 904;");
+await api("POST", "/settings/value", { key: "topic_limit", value: "0" });
+r = await api("POST", "/chats/delete", { chat_id: 904 });
 
 // flood guard
 await api("POST", "/settings", { key: "flood_enabled", value: true });

@@ -277,3 +277,10 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .item .note { font-size: 12px; margin-top: 4px; color: hsl(var(--muted-foreground)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .pin-i { width: 12px; height: 12px; margin-right: 4px; vertical-align: -1px; color: hsl(var(--accent)); }
 .act-row { display: flex; gap: 2px; }
+.bulkbar { display: none; align-items: center; gap: 8px; padding: 8px 12px; margin: 8px 0; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); position: sticky; top: 8px; z-index: 5; }
+.bulk-count { flex: 1; font-size: 13px; font-weight: 600; }
+.item.selectable { cursor: pointer; }
+.item.picked { background: hsl(var(--accent) / .08); }
+.check { width: 20px; height: 20px; flex: none; margin-top: 8px; border-radius: 6px; border: 1.5px solid hsl(var(--input)); display: inline-flex; align-items: center; justify-content: center; }
+.check.on { background: hsl(var(--accent)); border-color: hsl(var(--accent)); color: white; }
+.check svg { width: 13px; height: 13px; }
