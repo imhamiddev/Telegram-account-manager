@@ -83,7 +83,7 @@ test("schedule: honors the configured time zone", () => {
   assert.equal(scheduleActive({ ...base, tz: "UTC" }, "close_dm", now), false);
 });
 
-import { matchAutoreply, buildRules, isSafeRegex, cooldownCutoff } from "../src/rules.js";
+import { matchAutoreply, buildRules, isSafeRegex, cooldownCutoff, ruleApplies } from "../src/rules.js";
 
 const rules = buildRules([
   { keyword: "سلام", reply: "علیک سلام", match_type: "exact" },
@@ -227,4 +227,39 @@ test("pin: lockout remaining never goes negative", () => {
   assert.equal(lockoutRemaining(1300, 1000), 300);
   assert.equal(lockoutRemaining(1300, 2000), 0);
   assert.equal(lockoutRemaining(undefined, 2000), 0);
+});
+
+test("a rule for one chat wins over the global rule and ignores other chats", () => {
+  const rs = buildRules([
+    { id: 1, keyword: "price", reply: "global", match_type: "exact", chat_id: null },
+    { id: 2, keyword: "price", reply: "vip", match_type: "exact", chat_id: 42 },
+  ]);
+  assert.equal(matchAutoreply(rs, "price", { chatId: 42 }).reply, "vip");
+  assert.equal(matchAutoreply(rs, "price", { chatId: 7 }).reply, "global");
+  assert.equal(matchAutoreply(rs, "price").reply, "global");
+  const only = buildRules([{ id: 3, keyword: "hi", reply: "x", match_type: "exact", chat_id: 42 }]);
+  assert.equal(matchAutoreply(only, "hi", { chatId: 7 }), null);
+  assert.equal(matchAutoreply(only, "hi"), null);
+});
+
+test("a rule with active hours only fires inside the window (also across midnight)", () => {
+  const night = { keyword: "hi", match_type: "exact", hours_start: "22:00", hours_end: "07:00" };
+  const at = (iso) => new Date(`2026-01-05T${iso}:00Z`);
+  assert.equal(ruleApplies(night, 1, at("23:30"), "UTC"), true);
+  assert.equal(ruleApplies(night, 1, at("03:00"), "UTC"), true);
+  assert.equal(ruleApplies(night, 1, at("12:00"), "UTC"), false);
+  assert.equal(ruleApplies(night, 1, at("07:00"), "UTC"), false);
+  const office = { keyword: "hi", match_type: "exact", hours_start: "09:00", hours_end: "17:00" };
+  assert.equal(ruleApplies(office, 1, at("09:00"), "UTC"), true);
+  assert.equal(ruleApplies(office, 1, at("17:00"), "UTC"), false);
+  // the timezone matters: 23:30 UTC is 03:00 next day in Tehran (UTC+3:30)
+  assert.equal(ruleApplies(office, 1, at("23:30"), "Asia/Tehran"), false);
+  assert.equal(ruleApplies({ keyword: "hi", match_type: "exact" }, 1, at("12:00"), "UTC"), true);
+});
+
+test("hours and chat scope combine", () => {
+  const rs = buildRules([{ id: 1, keyword: "hi", reply: "night vip", match_type: "exact", chat_id: 5, hours_start: "22:00", hours_end: "07:00" }]);
+  assert.equal(matchAutoreply(rs, "hi", { chatId: 5, now: new Date("2026-01-05T23:00:00Z"), tz: "UTC" })?.reply, "night vip");
+  assert.equal(matchAutoreply(rs, "hi", { chatId: 5, now: new Date("2026-01-05T12:00:00Z"), tz: "UTC" }), null);
+  assert.equal(matchAutoreply(rs, "hi", { chatId: 6, now: new Date("2026-01-05T23:00:00Z"), tz: "UTC" }), null);
 });

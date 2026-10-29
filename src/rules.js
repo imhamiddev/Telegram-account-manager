@@ -62,7 +62,14 @@ export function isSafeRegex(pattern) {
   try { new RegExp(p, "iu"); return true; } catch { return false; }
 }
 
-/** Prepare DB rows for matching: compile regexes once, order exact -> contains -> regex. */
+/** A rule may be limited to one chat and/or to an active time window (HH:MM, may wrap past midnight). */
+export function ruleApplies(rule, chatId, now = new Date(), tz = "Asia/Tehran") {
+  if (rule.chat_id != null && (chatId == null || Number(rule.chat_id) !== Number(chatId))) return false;
+  if (isValidHM(rule.hours_start) && isValidHM(rule.hours_end)) return inWindow(rule.hours_start, rule.hours_end, minutesInZone(now, tz));
+  return true;
+}
+
+/** Prepare DB rows for matching: compile regexes once; rules for one chat win over global ones, then exact -> contains -> regex. */
 export function buildRules(rows) {
   const order = { exact: 0, contains: 1, regex: 2 };
   return rows
@@ -76,7 +83,7 @@ export function buildRules(rows) {
       return { ...r, match_type: type, re };
     })
     .filter(Boolean)
-    .sort((a, b) => order[a.match_type] - order[b.match_type]);
+    .sort((a, b) => ((a.chat_id == null) - (b.chat_id == null)) || (order[a.match_type] - order[b.match_type]));
 }
 
 /**
@@ -85,11 +92,12 @@ export function buildRules(rows) {
  *  contains -> the message includes the keyword (case-insensitive)
  *  regex    -> the pattern matches (case-insensitive, first 500 chars only)
  */
-export function matchAutoreply(rules, text) {
+export function matchAutoreply(rules, text, { chatId = null, now = new Date(), tz } = {}) {
   const t = String(text ?? "").trim();
   if (!t) return null;
   const lower = t.toLowerCase();
   for (const r of rules) {
+    if (!ruleApplies(r, chatId, now, tz)) continue;
     if (r.match_type === "exact" && lower === r.keyword) return r;
     if (r.match_type === "contains" && lower.includes(r.keyword)) return r;
     if (r.match_type === "regex" && r.re.test(t.slice(0, 500))) return r;

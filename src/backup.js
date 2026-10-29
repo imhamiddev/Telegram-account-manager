@@ -12,7 +12,7 @@ export async function getState(env) {
     env.DB.prepare("SELECT id, is_enabled FROM connections"),
     env.DB.prepare("SELECT chat_id, name, username, muted, dm_rule, last_at FROM chats"),
     env.DB.prepare("SELECT group_id, chat_id, thread_id FROM topics"),
-    env.DB.prepare("SELECT keyword, reply, match_type, cooldown_min, media_type, media_url FROM autoreplies"),
+    env.DB.prepare("SELECT id, keyword, reply, match_type, cooldown_min, media_type, media_url, chat_id, hours_start, hours_end, followup_min, followup_text FROM autoreplies"),
   ]);
   cache = {
     cfg: Object.fromEntries(s.results.map((r) => [r.key, r.value])),
@@ -246,7 +246,7 @@ export async function onBusinessMessage(env, m, edited) {
 
   // Auto-reply (exact / contains / regex), skipped for edits, removed spam and outside the schedule.
   if (!edited && !removed && scheduleActive(st.cfg, "autoreply")) {
-    const rule = matchAutoreply(st.autoreplies, m.text ?? m.caption);
+    const rule = matchAutoreply(st.autoreplies, m.text ?? m.caption, { chatId: m.chat.id, tz: st.cfg.tz });
     if (rule) tasks.push(sendAutoreply(env, m, rule).then((sent) => { if (sent) replied = 1; })
       .catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`, "auto-reply")));
   }
