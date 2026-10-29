@@ -46,6 +46,7 @@
     account: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/>',
     settings: '<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
@@ -318,19 +319,32 @@
   }
 
   async function viewChats(root) {
-    // Lazily paginated: an initial page loads, then more load as the user scrolls near the bottom.
+    // Server-side search, sort and label filter; pages load lazily as the user scrolls.
     const PAGE = 30;
-    let items = [], offset = 0, hasMore = true, loading = false, filter = "";
+    let items = [], offset = 0, hasMore = true, loading = false, gen = 0;
+    let q = "", sort = "recent", label = "", labels = [];
 
     const list = h("div", { class: "list" });
     const sentinel = h("div", { class: "load-more" }, icon("loader"));
     const card = Card(null, null, h("div", {}, list, sentinel), { flush: true });
+    const filters = h("div", { class: "toolbar-row" });
 
     function rowFor(c) {
+      const pinBtn = Btn("", { variant: "ghost", size: "sm", ic: "pin", onclick: async () => {
+        await api("/chats/pin", { method: "POST", body: { chat_id: c.chat_id, pinned: !c.pinned } });
+        toast(c.pinned ? "Unpinned" : "Pinned to the top");
+        reload();
+      } });
+      pinBtn.dataset.act = "pin";
+      const delBtn = Btn("", { variant: "ghost", size: "sm", ic: "trash", onclick: () => confirmDelete(c) });
+      delBtn.dataset.act = "delete";
       return h("div", { class: "item static" }, h("div", { class: "avatar" }, initials(c.name)),
-        h("div", { class: "body" }, h("div", { class: "name" }, c.name || "Unknown"),
-          h("div", { class: "meta" }, `${c.username ? "@" + c.username + " · " : ""}first seen ${fmtDate(c.added)}`),
-          c.muted ? h("div", { class: "badges" }, Badge("Not backed up", "warning")) : null,
+        h("div", { class: "body" },
+          h("div", { class: "tap", onclick: () => editSheet(c) },
+            h("div", { class: "name" }, c.pinned ? icon("pin", "pin-i") : null, c.name || "Unknown"),
+            h("div", { class: "meta" }, `${c.username ? "@" + c.username + " · " : ""}active ${fmtDate(c.last_at || c.added)}`),
+            (c.label || c.muted) ? h("div", { class: "badges" }, c.label ? Badge("🏷 " + c.label, "outline") : null, c.muted ? Badge("Not backed up", "warning") : null) : null,
+            c.note ? h("div", { class: "note" }, c.note) : null),
           Select([["default", "Close DM: default"], ["keep", "🛡 Never delete"], ["close", "🗑 Always delete"]], c.dm_rule || "default", async (rule) => {
             await api("/chats/rule", { method: "POST", body: { chat_id: c.chat_id, rule } });
             c.dm_rule = rule;
@@ -343,13 +357,31 @@
             toast(on ? "Backup enabled" : "Chat muted");
             redraw();
           }),
-          Btn("", { variant: "ghost", size: "sm", ic: "trash", onclick: () => confirmDelete(c) })));
+          h("div", { class: "act-row" }, pinBtn, delBtn)));
     }
+
+    // Label + note + pin for one chat.
+    function editSheet(c) {
+      openSheet((close) => {
+        const lab = h("input", { class: "input", maxlength: "24", placeholder: "e.g. Customer", value: c.label || "", list: "label-options" });
+        const opts = h("datalist", { id: "label-options" }, labels.map((l) => h("option", { value: l.label })));
+        const note = h("textarea", { class: "input textarea", maxlength: "500", placeholder: "Private note, only you see it" }, c.note || "");
+        return h("div", { class: "stack" },
+          h("h3", { class: "card-title" }, c.name || "Unknown"),
+          Field("Label", h("div", {}, lab, opts)),
+          Field("Note", note),
+          Btn("Save", { block: true, onclick: async () => {
+            await api("/chats/meta", { method: "POST", body: { chat_id: c.chat_id, label: lab.value, note: note.value } });
+            toast("Saved"); close(); reload();
+          } }));
+      });
+    }
+
     // Deletes the chat's topic in the group and every row for it. If Telegram refuses, the owner can still force-remove it.
     function confirmDelete(c) {
       openSheet((close) => {
         const body = h("div", { class: "stack" });
-        const done = () => { items = items.filter((x) => x.chat_id !== c.chat_id); close(); toast("Chat deleted"); redraw(); };
+        const done = () => { close(); toast("Chat deleted"); reload(); };
         const ask = (force, note) => body.replaceChildren(
           h("h3", { class: "card-title" }, force ? "Remove anyway?" : "Delete this chat?"),
           h("p", { class: "card-description" }, note || `"${c.name || "Unknown"}" is removed from the list and its topic in the backup group is deleted with every message inside it. Its stats are erased too. If this person writes again, a new topic is created.`),
@@ -365,27 +397,40 @@
         return body;
       });
     }
+
+    function drawFilters() {
+      filters.replaceChildren(
+        Select([["recent", "Last active"], ["added", "Newest first"], ["name", "Name A–Z"]], sort, (v) => { sort = v; reload(); }),
+        labels.length ? Select([["", "All labels"], ...labels.map((l) => [l.label, `${l.label} (${l.n})`])], label, (v) => { label = v; reload(); }) : null);
+    }
     function redraw() {
-      const visible = filter ? items.filter((c) => ((c.name || "") + " " + (c.username || "")).toLowerCase().includes(filter.toLowerCase())) : items;
-      list.replaceChildren(...(visible.length ? visible.map(rowFor) : (loading ? [] : [Empty("No chats yet. They appear after their first message.")])));
-      sentinel.style.display = (!filter && hasMore) ? "flex" : "none";
+      list.replaceChildren(...(items.length ? items.map(rowFor) : (loading ? [] : [Empty(q || label ? "No chats match." : "No chats yet. They appear after their first message.")])));
+      sentinel.style.display = hasMore ? "flex" : "none";
     }
     async function loadMore() {
       if (loading || !hasMore) return;
       loading = true; redraw();
-      const d = await api(`/chats?limit=${PAGE}&offset=${offset}`);
+      const g = gen;
+      const qs = new URLSearchParams({ limit: PAGE, offset, sort, q, label });
+      const d = await api(`/chats?${qs}`);
+      if (g !== gen) return; // a newer search/sort replaced this request
+      if (d.labels) { labels = d.labels; if (label && !labels.some((l) => l.label === label)) label = ""; drawFilters(); }
       items.push(...d.items);
       offset = d.next_offset; hasMore = d.has_more;
       loading = false; redraw();
     }
+    function reload() { gen++; items = []; offset = 0; hasMore = true; loading = false; redraw(); return loadMore().catch((e) => toast(e.message, "error")); }
 
-    const io = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) loadMore(); }, { root: null, rootMargin: "200px" });
+    const io = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) loadMore().catch((e) => toast(e.message, "error")); }, { root: null, rootMargin: "200px" });
     io.observe(sentinel);
 
+    let timer;
     root.replaceChildren(
-      h("div", { class: "search" }, icon("search"), h("input", { class: "input", placeholder: "Search chats…", oninput: (e) => { filter = e.target.value; redraw(); } })),
-      h("p", { class: "card-description" }, "Turn a chat off to stop forwarding its messages. Changes apply within about 15 seconds."),
+      h("div", { class: "search" }, icon("search"), h("input", { class: "input", placeholder: "Search chats…", oninput: (e) => { clearTimeout(timer); timer = setTimeout(() => { q = e.target.value.trim(); reload(); }, 300); } })),
+      filters,
+      h("p", { class: "card-description" }, "Turn a chat off to stop forwarding its messages. Tap a name to add a label or note. Changes apply within about 15 seconds."),
       card);
+    drawFilters();
     await loadMore();
   }
 
