@@ -50,6 +50,18 @@ r = await api("GET", "/chats?limit=10"); ok("chat created with dm_rule default",
 r = await api("POST", "/chats/rule", { chat_id: 555, rule: "keep" }); ok("set chat rule keep", r.status === 200);
 r = await api("POST", "/chats/rule", { chat_id: 555, rule: "nope" }); ok("reject bad chat rule", r.status === 400);
 
+// delete a whole chat (topic + every row). Chat 999 has a seeded topic; Telegram is unreachable so the topic delete fails first.
+await hook(msg(999, "bye")); await wait(2000);
+execSync(`npx wrangler d1 execute business_bot --local --command "INSERT OR REPLACE INTO topics(group_id,chat_id,thread_id) VALUES(-100123,999,42);"`, { stdio: "ignore" });
+r = await api("POST", "/chats/delete", { chat_id: "abc" }); ok("reject bad chat id on delete", r.status === 400);
+r = await api("POST", "/chats/delete", { chat_id: 999 }); ok("delete asks for force when topic can't be deleted", r.status === 409 && r.body.topic_failed === true, JSON.stringify(r));
+r = await api("GET", "/chats?limit=50"); ok("chat still listed after refused delete", r.body.items.some((c) => c.chat_id === 999));
+r = await api("POST", "/chats/delete", { chat_id: 999, force: true }); ok("force delete removes chat", r.status === 200 && r.body.ok === true, JSON.stringify(r));
+r = await api("GET", "/chats?limit=50"); ok("deleted chat no longer listed", !r.body.items.some((c) => c.chat_id === 999));
+r = await api("GET", "/stats?days=7"); ok("deleted chat stats erased", !r.body.top.some((c) => c.chat_id === 999), JSON.stringify(r.body.top));
+await hook(msg(998, "plain")); await wait(2000);
+r = await api("POST", "/chats/delete", { chat_id: 998 }); ok("delete chat without topic needs no force", r.status === 200 && r.body.topic_failed === false, JSON.stringify(r));
+
 // flood guard
 await api("POST", "/settings", { key: "flood_enabled", value: true });
 await api("POST", "/settings/value", { key: "flood_max", value: "3" });
