@@ -1,6 +1,7 @@
 import { tg, setSetting, loadSettings } from "./lib.js";
 import { invalidate, onBusinessMessage, onDeleted, logError } from "./backup.js";
 import { handleApi } from "./api.js";
+import { runCleanup } from "./chats.js";
 
 async function onCommand(env, m, origin) {
   const cmd = (m.text || "").trim().split(/\s+/)[0].split("@")[0].toLowerCase();
@@ -48,6 +49,13 @@ async function handle(update, env, origin) {
 }
 
 export default {
+  // Cron triggers (see wrangler.toml): 03:00 UTC every day removes inactive chats.
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil((async () => {
+      try { if (controller.cron === "0 3 * * *") await runCleanup(env); }
+      catch (e) { await logError(env, "cron", e.message); }
+    })());
+  },
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/api/")) return handleApi(req, env, url);

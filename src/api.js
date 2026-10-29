@@ -1,11 +1,12 @@
 import { verifyInitData, loadSettings, setSetting, tg, tgStrict, nowSec, hashPin, verifyPin, signUnlock, checkUnlock } from "./lib.js";
 import { invalidate, logError } from "./backup.js";
+import { deleteChat, runCleanup } from "./chats.js";
 import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS } from "./rules.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
-const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_enabled: "0", sched_close_dm: "1", sched_autoreply: "1", spam_enabled: "0", flood_enabled: "0" };
+const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_enabled: "0", sched_close_dm: "1", sched_autoreply: "1", spam_enabled: "0", flood_enabled: "0", cleanup_enabled: "0" };
 const flagsOf = (cfg) => Object.fromEntries(Object.entries(FLAGS).map(([k, d]) => [k, (cfg[k] ?? d) === "1"]));
 const groupOf = (cfg) => (cfg.group_id ? { id: cfg.group_id, title: cfg.group_title || "Backup group", is_forum: cfg.group_is_forum === "1" } : null);
 const activeConnection = (env) => env.DB.prepare("SELECT id FROM connections WHERE is_enabled=1 LIMIT 1").first();
@@ -22,6 +23,8 @@ const VALUES = {
   tz: ["Asia/Tehran", validTz],
   spam_words: ["", (v) => v.length <= 2000],
   flood_max: ["10", (v) => /^\d+$/.test(v) && Number(v) >= 3 && Number(v) <= 100],
+  cleanup_days: ["30", (v) => /^\d+$/.test(v) && Number(v) >= 7 && Number(v) <= 365],
+  topic_limit: ["0", (v) => /^\d+$/.test(v) && Number(v) <= 10000000],
   flood_window: ["60", (v) => /^\d+$/.test(v) && Number(v) >= 10 && Number(v) <= 600],
 };
 const CHAT_SORTS = { recent: "last_at DESC", added: "added DESC", name: "name COLLATE NOCASE ASC" };
@@ -127,30 +130,26 @@ export async function handleApi(req, env, url) {
       return json({ ok: true });
     }
 
-    // Fully removes a chat: its forum topic in the backup group (with every message inside it) and all its rows.
     if (p === "/chats/delete" && m === "POST") {
       const chatId = Number(body.chat_id);
       if (!Number.isSafeInteger(chatId)) return json({ error: "Invalid chat" }, 400);
-      const { results: topics } = await env.DB.prepare("SELECT group_id, thread_id FROM topics WHERE chat_id=?").bind(chatId).all();
-      const failed = [];
-      for (const t of topics) {
-        const r = await tg(env, "deleteForumTopic", { chat_id: t.group_id, message_thread_id: t.thread_id });
-        const gone = /thread not found|topic.*(not found|invalid|deleted)/i.test(r.description || "");
-        if (!r.ok && !gone) failed.push(r.description || "Telegram error");
-      }
-      // Don't orphan a topic silently: the owner decides (force) when Telegram refuses, e.g. missing "Delete messages" right.
-      if (failed.length && !body.force)
-        return json({ error: `Couldn't delete the topic: ${failed[0]}`, topic_failed: true }, 409);
-      await env.DB.batch([
-        env.DB.prepare("DELETE FROM topics WHERE chat_id=?").bind(chatId),
-        env.DB.prepare("DELETE FROM autoreply_hits WHERE chat_id=?").bind(chatId),
-        env.DB.prepare("DELETE FROM daily_stats WHERE chat_id=?").bind(chatId),
-        env.DB.prepare("DELETE FROM flood WHERE chat_id=?").bind(chatId),
-        env.DB.prepare("DELETE FROM chats WHERE chat_id=?").bind(chatId),
-      ]);
-      invalidate();
-      return json({ ok: true, topics_deleted: topics.length - failed.length, topic_failed: failed.length > 0 });
+      const r = await deleteChat(env, chatId, { force: !!body.force });
+      if (!r.ok) return json({ error: r.error, topic_failed: true }, 409);
+      return json(r);
     }
+    // Bulk delete: small batches (the Mini App sends 10 at a time) keep us under Telegram's rate limits and the Worker's subrequest cap.
+    if (p === "/chats/delete-many" && m === "POST") {
+      const ids = [...new Set((Array.isArray(body.chat_ids) ? body.chat_ids : []).map(Number).filter(Number.isSafeInteger))].slice(0, 25);
+      if (!ids.length) return json({ error: "No chats selected" }, 400);
+      let deleted = 0;
+      const failed = [];
+      for (const id of ids) {
+        const r = await deleteChat(env, id, { force: !!body.force });
+        if (r.ok) deleted++; else failed.push({ chat_id: id, error: r.error });
+      }
+      return json({ ok: true, deleted, failed });
+    }
+    if (p === "/cleanup/run" && m === "POST") return json({ ok: true, ...(await runCleanup(env)) });
 
     if (p === "/chats/rule" && m === "POST") {
       if (!DM_RULES.includes(body.rule)) return json({ error: "Unknown rule" }, 400);
@@ -266,10 +265,11 @@ export async function handleApi(req, env, url) {
       const conn = await activeConnection(env);
       const dbMs = Date.now() - t0;
       const dayAgo = Math.floor(Date.now() / 1000) - 86400;
-      const [wh, errs, recent] = await Promise.all([
+      const [wh, errs, recent, topicRow] = await Promise.all([
         tg(env, "getWebhookInfo", {}),
         env.DB.prepare("SELECT COUNT(*) n FROM error_log WHERE at >= ?").bind(dayAgo).first(),
         env.DB.prepare("SELECT id, at, scope, message FROM error_log ORDER BY id DESC LIMIT 15").all(),
+        env.DB.prepare("SELECT COUNT(*) n FROM topics").first(),
       ]);
       const info = wh.result || {};
       const checks = [];
@@ -286,6 +286,11 @@ export async function handleApi(req, env, url) {
 
       add("account", "Business account", conn ? "ok" : "fail", conn ? "Connected" : "Not connected");
       add("group", "Backup group", cfg.group_id ? "ok" : "fail", cfg.group_id ? (cfg.group_title || "Set") : "Not set. Send /setgr in the group");
+      const topics = topicRow?.n || 0, limit = Number(cfg.topic_limit) || 0;
+      if (topics || cfg.topics_enabled === "1") {
+        const status = limit && topics >= limit ? "fail" : limit && topics >= limit * 0.9 ? "warn" : "ok";
+        add("topics", "Topics", status, limit ? `${topics} of ${limit}${status === "ok" ? "" : ". Delete inactive chats"}` : `${topics} created`);
+      }
       const n = errs?.n || 0;
       add("errors", "Errors (24h)", n === 0 ? "ok" : n > 20 ? "fail" : "warn", n === 0 ? "None" : `${n} logged`);
 

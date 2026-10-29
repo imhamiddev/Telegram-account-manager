@@ -20,3 +20,7 @@ binding = "CF_VERSION_METADATA"
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = true
+
+# Daily cleanup of inactive chats (only acts when enabled in Settings)
+[triggers]
+crons = ["0 3 * * *"]
