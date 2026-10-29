@@ -10,7 +10,7 @@ export async function getState(env) {
   const [s, c, ch, t, ar] = await env.DB.batch([
     env.DB.prepare("SELECT key, value FROM settings"),
     env.DB.prepare("SELECT id, is_enabled FROM connections"),
-    env.DB.prepare("SELECT chat_id, name, username, muted, dm_rule FROM chats"),
+    env.DB.prepare("SELECT chat_id, name, username, muted, dm_rule, last_at FROM chats"),
     env.DB.prepare("SELECT group_id, chat_id, thread_id FROM topics"),
     env.DB.prepare("SELECT keyword, reply, match_type, cooldown_min, media_type, media_url FROM autoreplies"),
   ]);
@@ -221,10 +221,14 @@ export async function onBusinessMessage(env, m, edited) {
       deliver(env, st, m.chat.id, { ...x, name, username, unix: m.edit_date || m.date, label: edited ? "✏️ Edited\n" : "" })
         .catch((e) => notifyOwner(env, `Backup failed: ${e.message}`, "backup")));
   }
+  const now = nowSec();
   if (!chat) {
-    st.chats.set(m.chat.id, { chat_id: m.chat.id, name, username, muted: 0 });
-    tasks.push(env.DB.prepare("INSERT OR IGNORE INTO chats(chat_id,name,username,muted,added) VALUES(?,?,?,0,?)")
-      .bind(m.chat.id, name, username, nowSec()).run());
+    st.chats.set(m.chat.id, { chat_id: m.chat.id, name, username, muted: 0, last_at: now });
+    tasks.push(env.DB.prepare("INSERT OR IGNORE INTO chats(chat_id,name,username,muted,added,last_at) VALUES(?,?,?,0,?,?)")
+      .bind(m.chat.id, name, username, now, now).run());
+  } else if (now - (chat.last_at || 0) > 600) { // last activity, written at most every 10 minutes per chat
+    chat.last_at = now;
+    tasks.push(env.DB.prepare("UPDATE chats SET last_at=? WHERE chat_id=?").bind(now, m.chat.id).run());
   }
 
   // Spam filter: delete messages containing banned words (trusted chats are exempt).
