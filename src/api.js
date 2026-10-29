@@ -101,6 +101,31 @@ export async function handleApi(req, env, url) {
       return json({ ok: true });
     }
 
+    // Fully removes a chat: its forum topic in the backup group (with every message inside it) and all its rows.
+    if (p === "/chats/delete" && m === "POST") {
+      const chatId = Number(body.chat_id);
+      if (!Number.isSafeInteger(chatId)) return json({ error: "Invalid chat" }, 400);
+      const { results: topics } = await env.DB.prepare("SELECT group_id, thread_id FROM topics WHERE chat_id=?").bind(chatId).all();
+      const failed = [];
+      for (const t of topics) {
+        const r = await tg(env, "deleteForumTopic", { chat_id: t.group_id, message_thread_id: t.thread_id });
+        const gone = /thread not found|topic.*(not found|invalid|deleted)/i.test(r.description || "");
+        if (!r.ok && !gone) failed.push(r.description || "Telegram error");
+      }
+      // Don't orphan a topic silently: the owner decides (force) when Telegram refuses, e.g. missing "Delete messages" right.
+      if (failed.length && !body.force)
+        return json({ error: `Couldn't delete the topic: ${failed[0]}`, topic_failed: true }, 409);
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM topics WHERE chat_id=?").bind(chatId),
+        env.DB.prepare("DELETE FROM autoreply_hits WHERE chat_id=?").bind(chatId),
+        env.DB.prepare("DELETE FROM daily_stats WHERE chat_id=?").bind(chatId),
+        env.DB.prepare("DELETE FROM flood WHERE chat_id=?").bind(chatId),
+        env.DB.prepare("DELETE FROM chats WHERE chat_id=?").bind(chatId),
+      ]);
+      invalidate();
+      return json({ ok: true, topics_deleted: topics.length - failed.length, topic_failed: failed.length > 0 });
+    }
+
     if (p === "/chats/rule" && m === "POST") {
       if (!DM_RULES.includes(body.rule)) return json({ error: "Unknown rule" }, 400);
       await env.DB.prepare("UPDATE chats SET dm_rule=? WHERE chat_id=?").bind(body.rule, Number(body.chat_id)).run();
