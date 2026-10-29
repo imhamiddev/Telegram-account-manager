@@ -176,7 +176,7 @@
       await requestUnlock();
       return api(path, { method, body }, true);
     }
-    if (!r.ok) throw new Error(j.error || r.statusText);
+    if (!r.ok) { const e = new Error(j.error || r.statusText); e.data = j; throw e; }
     return j;
   }
 
@@ -336,12 +336,34 @@
             c.dm_rule = rule;
             toast(rule === "keep" ? "Whitelisted: never auto-deleted" : rule === "close" ? "Always deleted when Close DM is on" : "Follows the global rule");
           })),
-        Switch(!c.muted, async (on) => {
-          await api("/chats/mute", { method: "POST", body: { chat_id: c.chat_id, muted: !on } });
-          c.muted = on ? 0 : 1;
-          toast(on ? "Backup enabled" : "Chat muted");
-          redraw();
-        }));
+        h("div", { class: "row-actions" },
+          Switch(!c.muted, async (on) => {
+            await api("/chats/mute", { method: "POST", body: { chat_id: c.chat_id, muted: !on } });
+            c.muted = on ? 0 : 1;
+            toast(on ? "Backup enabled" : "Chat muted");
+            redraw();
+          }),
+          Btn("", { variant: "ghost", size: "sm", ic: "trash", onclick: () => confirmDelete(c) })));
+    }
+    // Deletes the chat's topic in the group and every row for it. If Telegram refuses, the owner can still force-remove it.
+    function confirmDelete(c) {
+      openSheet((close) => {
+        const body = h("div", { class: "stack" });
+        const done = () => { items = items.filter((x) => x.chat_id !== c.chat_id); close(); toast("Chat deleted"); redraw(); };
+        const ask = (force, note) => body.replaceChildren(
+          h("h3", { class: "card-title" }, force ? "Remove anyway?" : "Delete this chat?"),
+          h("p", { class: "card-description" }, note || `"${c.name || "Unknown"}" is removed from the list and its topic in the backup group is deleted with every message inside it. Its stats are erased too. If this person writes again, a new topic is created.`),
+          Btn(force ? "Remove from database only" : "Delete everything", { variant: "destructive", block: true, onclick: async () => {
+            try { await api("/chats/delete", { method: "POST", body: { chat_id: c.chat_id, force } }); done(); }
+            catch (e) {
+              if (e.data?.topic_failed && !force) return ask(true, `${e.message}. Make sure the bot is an admin with "Delete messages". You can remove the chat from the database anyway, then delete the topic by hand.`);
+              throw e;
+            }
+          } }),
+          Btn("Cancel", { variant: "outline", block: true, onclick: () => close() }));
+        ask(false);
+        return body;
+      });
     }
     function redraw() {
       const visible = filter ? items.filter((c) => ((c.name || "") + " " + (c.username || "")).toLowerCase().includes(filter.toLowerCase())) : items;
