@@ -161,7 +161,7 @@ sequenceDiagram
     and ریپلای خودکار
         W->>T: sendMessage "علیک سلام"
     and بستن پیوی
-        W->>T: deleteMessage
+        W->>T: deleteBusinessMessages
     end
     T-->>S: جواب میرسه، پیام اصلی پاک شده
 ```
