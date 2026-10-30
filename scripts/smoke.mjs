@@ -183,7 +183,7 @@ r = await api("POST", "/chats/delete", { chat_id: 907, force: true }); ok("force
 fake.clear(); fake.set("sendMessage");
 r = await api("POST", "/autoreplies", { keyword: "ping", reply: "pong", followup_min: 1, followup_text: "still there?" }); const fuRule = r.body.id;
 await hook(msg(555, "ping")); await wait(2000);
-const pong = fake.last("sendMessage");
+const pong = fake.calls.find((c) => c.method === "sendMessage" && c.body.text === "pong");
 ok("auto-reply goes out through the business connection", pong?.body.text === "pong" && pong.body.business_connection_id === "c1" && pong.body.chat_id === 555, JSON.stringify(pong));
 ok("a follow-up is scheduled one minute later", count("SELECT COUNT(*) n FROM followups WHERE chat_id=555 AND due_at - created_at = 60") === 1);
 await hook(ownerMsg(555, "right after (echo)")); await wait(1200);
