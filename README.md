@@ -46,6 +46,10 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 | 💬 | **Smart auto-reply** | Exact word, *contains* or **regex** matching, per-person **cooldown**, optional photo/file/video |
 | 🚫 | **Spam protection** | Delete messages with banned words, and auto-mute chats that flood you |
 | 🗑 | **Delete chat** | One tap removes a chat from the console, deletes its forum topic (and every message in it) and erases its rows, so you stay under Telegram's topic limit |
+| 🧹 | **Bulk + auto cleanup** | Select many chats and delete them in one go, or let a nightly job remove chats that were silent for N days (pinned chats are safe). The Health card counts topics and warns near your limit |
+| 📌 | **Organise chats** | Pin, label and add a private note to any chat; sort by last activity, newest or name; filter by label |
+| 🎯 | **Scoped auto-replies** | A rule can apply to one chat only (VIP gets a different answer) and/or only between certain hours |
+| ↪️ | **Follow-up** | If you haven't answered N minutes after an auto-reply, the bot sends a second message. Answer yourself and it is cancelled |
 | 🔐 | **Console PIN lock** | PBKDF2-hashed PIN enforced by the server, brute-force lockout, auto-lock in background |
 | 📊 | **Activity chart** | Messages per day (7/14/30d), replies, deletions and your most active chats. Counters only |
 | 🩺 | **System health** | DB latency, webhook status, connection, last errors and the deployed version |
@@ -335,8 +339,8 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 | `npm run lint` | ESLint over `src/`, `public/`, `test/`, `scripts/` |
 | `npm test` | Unit tests for the decision logic (auto-reply matching, schedule, Close DM rules, spam, PIN, crypto) |
 | `npm run check` | Lint + unit tests (what CI runs) |
-| `npm run dev:test`, then `npm run smoke` | Integration test: Worker + local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route (38 checks) |
-| `npm run smoke:ui` | Runs the real Mini App in jsdom against that Worker: every tab, the auto-reply editor, the PIN lock flow (26 checks) |
+| `npm run dev:test`, then `npm run smoke` | Integration test: Worker + local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route (91 checks) |
+| `npm run smoke:ui` | Runs the real Mini App in jsdom against that Worker: every tab, the auto-reply editor, the PIN lock flow (42 checks) |
 
 An optional GitHub Actions workflow lives in [`docs/ci.yml.example`](docs/ci.yml.example). Copy it to `.github/workflows/ci.yml` to run `npm run check` on every push and pull request (checks only, it never deploys).
 
@@ -366,7 +370,7 @@ An optional GitHub Actions workflow lives in [`docs/ci.yml.example`](docs/ci.yml
 │   └── lib.js          # Telegram helpers, crypto, formatting
 ├── public/             # Mini App (index.html, app.js, app.css)
 ├── assets/             # README visuals (animated SVGs)
-├── migrations/         # D1 migrations (0001 ... 0007)
+├── migrations/         # D1 migrations (0001 ... 0010)
 ├── test/               # unit tests (node --test)
 ├── scripts/            # integration smoke test
 ├── db-legacy/          # old hand-run schema files, reference only

@@ -108,6 +108,17 @@ btn("Update rule").click(); await wait(1200);
 const scoped = [...w.document.querySelectorAll(".kw-row")].find((e) => e.querySelector(".kw").textContent === "ui-test");
 ok("auto-reply: scoped rule shows chat and hours badges", /👤/.test(scoped.textContent) && /22:00–07:00/.test(scoped.textContent), scoped.textContent);
 ok("auto-reply: editor is back in add mode after saving", !!btn("Save rule"));
+const fu = w.document.querySelector(".sheet input[placeholder='0 = no follow-up']");
+const fuBox = () => w.document.querySelector(".sheet textarea[placeholder^='Sent only if']");
+ok("auto-reply: follow-up text is hidden until a delay is set", fu && fuBox().closest(".field").style.display === "none");
+w.document.querySelector(".sheet input[placeholder^='Keyword']").value = "fu-test"; w.document.querySelector(".sheet textarea").value = "first";
+fu.value = "5"; fu.dispatchEvent(new w.Event("input")); await wait(100);
+ok("auto-reply: follow-up text appears once a delay is set", fuBox().closest(".field").style.display !== "none");
+btn("Save rule").click(); await wait(800);
+ok("auto-reply: follow-up needs its message", !!w.document.querySelector(".toast.error") || ![...w.document.querySelectorAll(".kw-row .kw")].some((e) => e.textContent === "fu-test"));
+fuBox().value = "are you there?"; btn("Save rule").click(); await wait(1200);
+const fuRow = [...w.document.querySelectorAll(".kw-row")].find((e) => e.querySelector(".kw").textContent === "fu-test");
+ok("auto-reply: follow-up rule saved with its badge", fuRow && /follow-up 5 min/.test(fuRow.textContent), fuRow?.textContent);
 
 // PIN lock via UI
 w.document.querySelector(".sheet .btn-ghost")?.click(); await wait(500);

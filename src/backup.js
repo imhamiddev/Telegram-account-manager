@@ -1,4 +1,5 @@
 import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec } from "./lib.js";
+import { scheduleFollowup, cancelFollowup } from "./followups.js";
 import { shouldCloseDm, scheduleActive, buildRules, matchAutoreply, cooldownCutoff, dayKey, parseWordList, findBannedWord, floodExceeded, isTrusted } from "./rules.js";
 
 // ---------- in-memory state cache (keeps the hot path free of DB reads) ----------
@@ -207,7 +208,10 @@ async function bumpStats(env, st, chatId, replies, deleted) {
 export async function onBusinessMessage(env, m, edited) {
   const st = await getState(env);
   if (!(await isOwnerConnection(env, st, m.business_connection_id))) return;
-  if (String(m.from?.id) === env.OWNER_ID) return; // your own messages are not backed up
+  if (String(m.from?.id) === env.OWNER_ID) { // your own messages are not backed up, but answering a chat cancels its pending follow-up
+    if (!edited) await cancelFollowup(env, m.chat.id).catch((e) => logError(env, "follow-up", e.message));
+    return;
+  }
 
   const chat = st.chats.get(m.chat.id);
   if (chat?.muted) return;
@@ -247,7 +251,7 @@ export async function onBusinessMessage(env, m, edited) {
   // Auto-reply (exact / contains / regex), skipped for edits, removed spam and outside the schedule.
   if (!edited && !removed && scheduleActive(st.cfg, "autoreply")) {
     const rule = matchAutoreply(st.autoreplies, m.text ?? m.caption, { chatId: m.chat.id, tz: st.cfg.tz });
-    if (rule) tasks.push(sendAutoreply(env, m, rule).then((sent) => { if (sent) replied = 1; })
+    if (rule) tasks.push(sendAutoreply(env, m, rule).then(async (sent) => { if (sent) { replied = 1; await scheduleFollowup(env, m, rule); } })
       .catch((e) => notifyOwner(env, `Auto-reply failed: ${e.message}`, "auto-reply")));
   }
 
