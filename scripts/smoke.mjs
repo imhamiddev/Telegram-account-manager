@@ -16,6 +16,13 @@ const initData = (() => {
   return p.toString();
 })();
 
+// workerd drops idle keep-alive sockets while the script waits or shells out; retry a request that hit a stale one.
+const rawFetch = globalThis.fetch;
+globalThis.fetch = async (u, o) => {
+  try { return await rawFetch(u, o); }
+  catch (e) { if (e.cause?.code === "UND_ERR_SOCKET") return rawFetch(u, o); throw e; }
+};
+
 // Fake Telegram on :8788 (the Worker is started with TG_API pointing here). Every method fails like an unauthorised token
 // unless a test enables it with fake.set(method), so the "Telegram unreachable" behaviour is still covered by default.
 const fake = {
