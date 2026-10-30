@@ -323,7 +323,10 @@
     const PAGE = 30;
     let items = [], offset = 0, hasMore = true, loading = false, gen = 0;
     let q = "", sort = "recent", label = "", labels = [];
+    let selecting = false;
+    const picked = new Set();
 
+    const bulk = h("div", { class: "bulkbar" });
     const list = h("div", { class: "list" });
     const sentinel = h("div", { class: "load-more" }, icon("loader"));
     const card = Card(null, null, h("div", {}, list, sentinel), { flush: true });
@@ -338,6 +341,14 @@
       pinBtn.dataset.act = "pin";
       const delBtn = Btn("", { variant: "ghost", size: "sm", ic: "trash", onclick: () => confirmDelete(c) });
       delBtn.dataset.act = "delete";
+      if (selecting) {
+        const on = picked.has(c.chat_id);
+        return h("div", { class: "item static selectable" + (on ? " picked" : ""), onclick: () => toggle(c) },
+          h("span", { class: "check" + (on ? " on" : "") }, on ? icon("check") : null),
+          h("div", { class: "body" }, h("div", { class: "name" }, c.pinned ? icon("pin", "pin-i") : null, c.name || "Unknown"),
+            h("div", { class: "meta" }, `${c.username ? "@" + c.username + " · " : ""}active ${fmtDate(c.last_at || c.added)}`),
+            c.label ? h("div", { class: "badges" }, Badge("🏷 " + c.label, "outline")) : null));
+      }
       return h("div", { class: "item static" }, h("div", { class: "avatar" }, initials(c.name)),
         h("div", { class: "body" },
           h("div", { class: "tap", onclick: () => editSheet(c) },
@@ -398,8 +409,43 @@
       });
     }
 
+    function toggle(c) { if (picked.has(c.chat_id)) picked.delete(c.chat_id); else picked.add(c.chat_id); redraw(); drawBulk(); }
+    function drawBulk() {
+      bulk.style.display = selecting ? "flex" : "none";
+      bulk.replaceChildren(
+        h("span", { class: "bulk-count" }, `${picked.size} selected`),
+        Btn("All", { variant: "outline", size: "sm", onclick: () => { items.forEach((c) => picked.add(c.chat_id)); redraw(); drawBulk(); } }),
+        Btn("Delete", { variant: "destructive", size: "sm", ic: "trash", disabled: !picked.size, onclick: () => confirmBulk() }));
+    }
+    // Deletes the picked chats in batches of 10 (topics first), reporting progress. Failures stay selected.
+    function confirmBulk() {
+      const ids = [...picked];
+      openSheet((close) => {
+        const body = h("div", { class: "stack" });
+        const run = async (force) => {
+          let deleted = 0; const failed = [];
+          for (let i = 0; i < ids.length; i += 10) {
+            const r = await api("/chats/delete-many", { method: "POST", body: { chat_ids: ids.slice(i, i + 10), force } });
+            deleted += r.deleted; failed.push(...r.failed);
+            if (ids.length > 10) toast(`Deleted ${deleted} of ${ids.length}…`);
+          }
+          picked.clear(); failed.forEach((f) => picked.add(f.chat_id));
+          close();
+          if (failed.length) toast(`${deleted} deleted, ${failed.length} failed: ${failed[0].error}`, "error"); else toast(`${deleted} chats deleted`);
+          if (!failed.length) selecting = false;
+          drawBulk(); reload();
+        };
+        body.replaceChildren(
+          h("h3", { class: "card-title" }, `Delete ${ids.length} chat${ids.length === 1 ? "" : "s"}?`),
+          h("p", { class: "card-description" }, "Their topics in the backup group are deleted with every message inside, and their stats are erased. Chats whose topic can't be deleted stay selected so you can retry."),
+          Btn("Delete everything", { variant: "destructive", block: true, onclick: () => run(false) }),
+          Btn("Cancel", { variant: "outline", block: true, onclick: () => close() }));
+        return body;
+      });
+    }
     function drawFilters() {
       filters.replaceChildren(
+        Btn(selecting ? "Cancel" : "Select", { variant: "outline", size: "sm", onclick: () => { selecting = !selecting; picked.clear(); drawFilters(); drawBulk(); redraw(); } }),
         Select([["recent", "Last active"], ["added", "Newest first"], ["name", "Name A–Z"]], sort, (v) => { sort = v; reload(); }),
         labels.length ? Select([["", "All labels"], ...labels.map((l) => [l.label, `${l.label} (${l.n})`])], label, (v) => { label = v; reload(); }) : null);
     }
@@ -428,9 +474,10 @@
     root.replaceChildren(
       h("div", { class: "search" }, icon("search"), h("input", { class: "input", placeholder: "Search chats…", oninput: (e) => { clearTimeout(timer); timer = setTimeout(() => { q = e.target.value.trim(); reload(); }, 300); } })),
       filters,
+      bulk,
       h("p", { class: "card-description" }, "Turn a chat off to stop forwarding its messages. Tap a name to add a label or note. Changes apply within about 15 seconds."),
       card);
-    drawFilters();
+    drawFilters(); drawBulk();
     await loadMore();
   }
 
@@ -637,6 +684,22 @@
       toggle("sched_autoreply", "Apply to auto-reply", "Outside the hours, no auto-replies are sent")), { flush: true });
   }
 
+  function cleanupCard(d, toggle) {
+    const save = async (key, value) => { await api("/settings/value", { method: "POST", body: { key, value } }); d.values[key] = value; toast("Saved"); };
+    const limit = h("input", { class: "input", type: "number", min: "0", placeholder: "0 = no warning", value: d.values.topic_limit === "0" ? "" : d.values.topic_limit,
+      onchange: (e) => save("topic_limit", String(Math.max(0, Math.floor(Number(e.target.value) || 0)))).catch((err) => toast(err.message, "error")) });
+    return Card("Chat cleanup", "Every chat gets a topic in the backup group. Remove old ones so you stay under Telegram's topic limit.", h("div", { class: "list" },
+      toggle("cleanup_enabled", "Auto-delete inactive chats", "Each night, chats with no new messages are deleted with their topic. Pinned chats are never touched."),
+      h("div", { class: "setting" }, h("div", {}, h("div", { class: "t" }, "Inactive for"), h("div", { class: "d" }, "Up to 20 chats are removed per night")),
+        Select([["7", "7 days"], ["14", "14 days"], ["30", "30 days"], ["60", "60 days"], ["90", "90 days"], ["180", "180 days"], ["365", "1 year"]], d.values.cleanup_days, (v) => save("cleanup_days", v))),
+      h("div", { class: "setting" }, h("div", {}, h("div", { class: "t" }, "Topic warning at"), h("div", { class: "d" }, "Overview warns when you get close to this number")), limit),
+      h("div", { class: "setting" }, h("div", {}, h("div", { class: "t" }, "Run cleanup now"), h("div", { class: "d" }, "Uses the settings above")),
+        Btn("Run", { variant: "outline", size: "sm", ic: "trash", onclick: async () => {
+          const r = await api("/cleanup/run", { method: "POST" });
+          toast(r.skipped ? "Turn on auto-delete first" : `${r.removed} removed${r.failed ? `, ${r.failed} failed` : ""}`, r.failed ? "error" : "");
+        } }))), { flush: true });
+  }
+
   async function viewSettings(root) {
     const d = await api("/settings");
     themeMode = d.theme || "system"; accent = d.accent || "blue";
@@ -657,6 +720,7 @@
           [["all", "Everyone except whitelist"], ["selected", "Only chats I pick"]])), { flush: true }),
       scheduleCard(d, toggle),
       spamCard(d, toggle),
+      cleanupCard(d, toggle),
       Card("Auto-reply", "Reply instantly to an exact keyword", h("div", { class: "stack" },
         Btn("Manage auto-replies", { variant: "outline", ic: "reply", block: true, onclick: () => {
           openSheet((close) => {

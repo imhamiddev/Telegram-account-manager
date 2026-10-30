@@ -52,6 +52,18 @@ if (labIn) {
 }
 ok("chats: sort and label filter selects render", w.document.querySelectorAll(".toolbar-row select").length >= 2);
 
+// bulk select
+const selBtn = [...w.document.querySelectorAll(".toolbar-row button")].find((b) => b.textContent.trim() === "Select");
+ok("chats: Select button exists", !!selBtn);
+if (selBtn) {
+  selBtn.click(); await wait(200);
+  ok("chats: select mode shows checkboxes", w.document.querySelectorAll(".item.selectable").length > 0);
+  w.document.querySelector(".item.selectable").click(); await wait(100);
+  ok("chats: picking a chat updates the counter", /1 selected/.test(w.document.querySelector(".bulkbar").textContent), w.document.querySelector(".bulkbar").textContent);
+  [...w.document.querySelectorAll(".toolbar-row button")].find((b) => b.textContent.trim() === "Cancel")?.click(); await wait(200);
+  ok("chats: cancel leaves select mode", w.document.querySelectorAll(".item.selectable").length === 0);
+}
+
 // delete chat: trash button opens a confirm sheet; the refused-topic path offers "remove anyway"
 const rowsBefore = w.document.querySelectorAll(".item.static").length;
 const trash = w.document.querySelector(".item.static [data-act=\"delete\"]");
@@ -73,7 +85,7 @@ await clickNav("Account");
 ok("account: loads", !text().includes("Couldn't load"), text());
 
 await clickNav("Settings");
-for (const t of ["Appearance", "Console lock", "Close DM applies to", "Schedule", "Spam protection", "Auto-reply"]) ok("settings: " + t, text().includes(t), t);
+for (const t of ["Appearance", "Console lock", "Close DM applies to", "Schedule", "Spam protection", "Chat cleanup", "Auto-reply"]) ok("settings: " + t, text().includes(t), t);
 const mode = [...w.document.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.value === "selected"));
 mode.value = "selected"; mode.dispatchEvent(new w.Event("change")); await wait(800);
 ok("settings: Close DM mode saves", !w.document.querySelector(".toast.error"));
