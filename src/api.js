@@ -194,6 +194,108 @@ export async function handleApi(req, env, url) {
 
     if (p === "/autoreplies" && m === "GET") {
       const { results } = await env.DB.prepare(
+        "SELECT r.id, r.keyword, r.reply, r.match_type, r.cooldown_min, r.media_type, r.media_url, r.chat_id, c.name AS chat_name, " +
+        "r.hours_start, r.hours_end, r.followup_min, r.followup_text FROM autoreplies r LEFT JOIN chats c ON c.chat_id = r.chat_id " +
+        "ORDER BY r.chat_id IS NULL, r.match_type, r.keyword").all();
+      return json({ items: results });
+    }
+    if (p === "/autoreplies" && m === "POST") {
+      const match_type = isMatchType(body.match_type) ? body.match_type : "exact";
+      let keyword = String(body.keyword || "").trim();
+      const reply = String(body.reply || "").trim();
+      const cooldown_min = Math.floor(Number(body.cooldown_min) || 0);
+      const media_type = body.media_type ? String(body.media_type) : null;
+      const media_url = body.media_url ? String(body.media_url).trim() : null;
+      const chat_id = body.chat_id == null || body.chat_id === "" ? null : Number(body.chat_id);
+      const hours_start = body.hours_start ? String(body.hours_start) : null;
+      const hours_end = body.hours_end ? String(body.hours_end) : null;
+      const followup_min = Math.floor(Number(body.followup_min) || 0);
+      const followup_text = body.followup_text ? String(body.followup_text).trim() : null;
+
+      if (!keyword) return json({ error: "Keyword is required" }, 400);
+      if (!reply) return json({ error: "Reply text is required" }, 400);
+      if (match_type === "regex") {
+        if (!isSafeRegex(keyword)) return json({ error: "Invalid or unsafe regex (max 100 chars, no nested quantifiers or back-references)" }, 400);
+      } else {
+        keyword = keyword.toLowerCase();
+      }
+      if (keyword.length > 100) return json({ error: "Keyword is too long" }, 400);
+      if (cooldown_min < 0 || cooldown_min > 10080) return json({ error: "Cooldown must be between 0 and 10080 minutes" }, 400);
+      if (!!media_type !== !!media_url) return json({ error: "Media needs both a type and a URL" }, 400);
+      if (media_type) {
+        if (!["photo", "document", "video"].includes(media_type)) return json({ error: "Unknown media type" }, 400);
+        if (!/^https:\/\/\S+$/.test(media_url) || media_url.length > 500) return json({ error: "Media URL must be a direct https link" }, 400);
+      }
+      if (reply.length > (media_type ? 1024 : 4000)) return json({ error: media_type ? "Caption is too long (max 1024)" : "Reply is too long" }, 400);
+      if (chat_id !== null) {
+        if (!Number.isSafeInteger(chat_id)) return json({ error: "Invalid chat" }, 400);
+        if (!(await env.DB.prepare("SELECT 1 FROM chats WHERE chat_id=?").bind(chat_id).first())) return json({ error: "That chat doesn't exist" }, 400);
+      }
+      if (!!hours_start !== !!hours_end) return json({ error: "Set both the start and the end of the active hours" }, 400);
+      if (hours_start && !(HM.test(hours_start) && HM.test(hours_end))) return json({ error: "Hours must look like 09:00" }, 400);
+      if (followup_min < 0 || followup_min > 10080) return json({ error: "Follow-up delay must be between 0 and 10080 minutes" }, 400);
+      if (followup_min > 0 && !followup_text) return json({ error: "Write the follow-up message" }, 400);
+      if (followup_text && followup_text.length > 4000) return json({ error: "Follow-up is too long" }, 400);
+
+      // Editing by id; otherwise the same keyword + chat + hours overwrites that rule instead of duplicating it.
+      let id = Number(body.id) || null;
+      if (!id) {
+        const dup = await env.DB.prepare("SELECT id FROM autoreplies WHERE keyword=? AND chat_id IS ? AND IFNULL(hours_start,'')=? AND IFNULL(hours_end,'')=?")
+          .bind(keyword, chat_id, hours_start || "", hours_end || "").first();
+        id = dup?.id || null;
+      }
+      const vals = [keyword, reply, match_type, cooldown_min, media_type, media_url, chat_id, hours_start, hours_end, followup_min, followup_min > 0 ? followup_text : null];
+      if (id) {
+        const r = await env.DB.prepare("UPDATE autoreplies SET keyword=?, reply=?, match_type=?, cooldown_min=?, media_type=?, media_url=?, chat_id=?, hours_start=?, hours_end=?, followup_min=?, followup_text=? WHERE id=?")
+          .bind(...vals, id).run();
+        if (!r.meta?.changes) return json({ error: "That rule no longer exists" }, 404);
+      } else {
+        const r = await env.DB.prepare("INSERT INTO autoreplies(keyword,reply,match_type,cooldown_min,media_type,media_url,chat_id,hours_start,hours_end,followup_min,followup_text) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+          .bind(...vals).run();
+        id = r.meta?.last_row_id;
+      }
+      invalidate();
+      return json({ ok: true, id });
+    }
+    if (p === "/autoreplies/delete" && m === "POST") {
+      const id = Number(body.id);
+      if (!Number.isSafeInteger(id)) return json({ error: "Rule id is required" }, 400);
+      const row = await env.DB.prepare("SELECT keyword FROM autoreplies WHERE id=?").bind(id).first();
+      await env.DB.prepare("DELETE FROM autoreplies WHERE id=?").bind(id).run();
+      if (row && !(await env.DB.prepare("SELECT 1 FROM autoreplies WHERE keyword=?").bind(row.keyword).first()))
+        await env.DB.prepare("DELETE FROM autoreply_hits WHERE keyword=?").bind(row.keyword).run();
+      invalidate();
+      return json({ ok: true });
+    }
+    if (p === "/settings/value" && m === "POST") {
+      const spec = VALUES[body.key];
+      if (!spec) return json({ error: "Unknown setting" }, 400);
+      const value = String(body.value ?? "").trim();
+      if (!spec[1](value)) return json({ error: "Invalid value" }, 400);
+      await setSetting(env, body.key, value);
+      invalidate();
+      return json({ ok: true });
+    }
+    if (p === "/settings" && m === "POST") {
+      if (!(body.key in FLAGS)) return json({ error: "Unknown setting" }, 400);
+      await setSetting(env, body.key, body.value ? "1" : "0");
+      invalidate();
+      const cfg = await loadSettings(env);
+      const warning = body.key === "topics_enabled" && body.value && cfg.group_is_forum !== "1"
+        ? "Topics need a forum group. Enable Topics in the group's settings." : null;
+      return json({ ok: true, warning });
+    }
+    if (p === "/settings/appearance" && m === "POST") {
+      if (body.theme && !["system", "light", "dark"].includes(body.theme)) return json({ error: "Unknown theme" }, 400);
+      if (body.accent && !ACCENTS.includes(body.accent)) return json({ error: "Unknown accent" }, 400);
+      if (body.theme) await setSetting(env, "theme", body.theme);
+      if (body.accent) await setSetting(env, "accent", body.accent);
+      invalidate();
+      return json({ ok: true });
+    }
+
+    if (p === "/autoreplies" && m === "GET") {
+      const { results } = await env.DB.prepare(
         "SELECT keyword, reply, match_type, cooldown_min, media_type, media_url FROM autoreplies ORDER BY match_type, keyword").all();
       return json({ items: results });
     }

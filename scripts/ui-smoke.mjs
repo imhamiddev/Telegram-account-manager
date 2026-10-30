@@ -97,6 +97,17 @@ w.document.querySelector(".sheet textarea").value = "reply from ui";
 const ms = w.document.querySelector(".sheet select"); ms.value = "contains"; ms.dispatchEvent(new w.Event("change"));
 btn("Save rule").click(); await wait(1200);
 ok("auto-reply: saved via UI shows in list", [...w.document.querySelectorAll(".kw-row .kw")].some((e) => e.textContent === "ui-test"));
+const uiRow = [...w.document.querySelectorAll(".kw-row")].find((e) => e.querySelector(".kw").textContent === "ui-test");
+uiRow.click(); await wait(200);
+ok("auto-reply: tapping a rule switches the editor to update mode", !!btn("Update rule") && !!btn("Cancel editing"));
+const scope = [...w.document.querySelectorAll(".sheet select")].find((x) => [...x.options].some((o) => o.textContent === "All chats"));
+ok("auto-reply: chat scope select lists chats", scope && scope.options.length > 1, String(scope?.options.length));
+scope.value = scope.options[1].value;
+const hrs = w.document.querySelectorAll(".sheet input[type=time]"); hrs[0].value = "22:00"; hrs[1].value = "07:00";
+btn("Update rule").click(); await wait(1200);
+const scoped = [...w.document.querySelectorAll(".kw-row")].find((e) => e.querySelector(".kw").textContent === "ui-test");
+ok("auto-reply: scoped rule shows chat and hours badges", /👤/.test(scoped.textContent) && /22:00–07:00/.test(scoped.textContent), scoped.textContent);
+ok("auto-reply: editor is back in add mode after saving", !!btn("Save rule"));
 
 // PIN lock via UI
 w.document.querySelector(".sheet .btn-ghost")?.click(); await wait(500);

@@ -76,6 +76,24 @@ r = await api("GET", "/chats?sort=name&limit=10"); ok("pinned chat sorts first",
 r = await api("POST", "/chats/pin", { chat_id: 996, pinned: false }); r = await api("GET", "/chats?sort=name&limit=10");
 ok("sort by name A-Z", r.body.items.map((c) => c.name).join() === [...r.body.items.map((c) => c.name)].sort((x, y) => x.localeCompare(y, "en", { sensitivity: "base" })).join(), JSON.stringify(r.body.items.map((c) => c.name)));
 
+// auto-reply scopes: one chat, active hours, id-based edit/delete, follow-up validation
+const n0 = (await api("GET", "/autoreplies")).body.items.length;
+r = await api("POST", "/autoreplies", { keyword: "price", reply: "global price" }); ok("add global rule", r.status === 200 && r.body.id > 0, JSON.stringify(r));
+r = await api("POST", "/autoreplies", { keyword: "price", reply: "vip price", chat_id: 555 }); const vipId = r.body.id; ok("same keyword for one chat is a separate rule", r.status === 200 && vipId > 0, JSON.stringify(r));
+r = await api("POST", "/autoreplies", { keyword: "price", reply: "vip price v2", chat_id: 555 }); ok("same keyword + chat overwrites instead of duplicating", r.status === 200 && r.body.id === vipId, JSON.stringify(r));
+r = await api("POST", "/autoreplies", { keyword: "x", reply: "y", chat_id: 424242 }); ok("reject a rule for an unknown chat", r.status === 400);
+r = await api("POST", "/autoreplies", { keyword: "x", reply: "y", hours_start: "09:00" }); ok("reject half-set hours", r.status === 400);
+r = await api("POST", "/autoreplies", { keyword: "x", reply: "y", hours_start: "9am", hours_end: "17:00" }); ok("reject malformed hours", r.status === 400);
+r = await api("POST", "/autoreplies", { keyword: "late", reply: "i am asleep", hours_start: "22:00", hours_end: "07:00" }); const lateId = r.body.id; ok("add rule with active hours", r.status === 200 && lateId > 0, JSON.stringify(r));
+r = await api("POST", "/autoreplies", { keyword: "x", reply: "y", followup_min: 30 }); ok("reject follow-up without text", r.status === 400);
+r = await api("POST", "/autoreplies", { keyword: "x", reply: "y", followup_min: 20000, followup_text: "z" }); ok("reject follow-up delay over a week", r.status === 400);
+r = await api("POST", "/autoreplies", { id: lateId, keyword: "late", reply: "back at 7", hours_start: "22:00", hours_end: "07:00", followup_min: 15, followup_text: "still here?" }); ok("edit a rule by id (with follow-up)", r.status === 200 && r.body.id === lateId);
+r = await api("GET", "/autoreplies"); const vip = r.body.items.find((i) => i.id === vipId), late = r.body.items.find((i) => i.id === lateId);
+ok("list shows chat name, hours and follow-up", vip?.chat_name === "U555" && vip.reply === "vip price v2" && late?.hours_start === "22:00" && late.reply === "back at 7" && late.followup_min === 15 && late.followup_text === "still here?", JSON.stringify([vip, late]));
+r = await api("POST", "/autoreplies/delete", { id: vipId }); await api("POST", "/autoreplies/delete", { id: lateId }); r = await api("GET", "/autoreplies");
+ok("delete by id removes only that rule", r.body.items.length === n0 + 1 && r.body.items.some((i) => i.keyword === "price" && i.chat_id === null));
+r = await api("POST", "/autoreplies/delete", { id: r.body.items.find((i) => i.keyword === "price").id });
+
 // bulk delete, auto cleanup of inactive chats, topic counter
 const sql = (q) => execSync(`npx wrangler d1 execute business_bot --local --command "${q}"`, { stdio: "ignore" });
 await hook(msg(901, "a")); await hook(msg(902, "b")); await hook(msg(903, "c")); await hook(msg(904, "d")); await wait(2500);

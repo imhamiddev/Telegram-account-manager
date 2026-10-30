@@ -530,17 +530,27 @@
 
   async function viewAutoreplies(root) {
     const d = await api("/autoreplies");
+    const chatList = (await api("/chats?limit=100&sort=recent")).items;
     const MATCH = [["exact", "Exact word"], ["contains", "Contains word"], ["regex", "Regex"]];
     const MEDIA = [["", "No media"], ["photo", "Photo"], ["document", "File"], ["video", "Video"]];
     const MLABEL = { exact: "Exact", contains: "Contains", regex: "Regex" };
     const MEDIA_LABEL = { photo: "Photo", document: "File", video: "Video" };
+    let editingId = null;
 
     const kwInput = h("input", { class: "input", placeholder: "Keyword, e.g. سلام" });
     const rpInput = h("textarea", { class: "input textarea", rows: "3", placeholder: "Reply text, e.g. علیک سلام" });
     const cdInput = h("input", { class: "input", type: "number", min: "0", max: "10080", placeholder: "0 = no cooldown" });
     const urlInput = h("input", { class: "input", placeholder: "https://… direct link to the image/file" });
+    const fromInput = h("input", { class: "input", type: "time" }), toInput = h("input", { class: "input", type: "time" });
     const matchSel = Select(MATCH, "exact", () => hint());
     const mediaSel = Select(MEDIA, "", () => { urlField.style.display = mediaSel.value ? "" : "none"; });
+    const chatSel = h("select", { class: "select" });
+    function fillChats(extra) {
+      const opts = [["", "All chats"], ...chatList.map((c) => [String(c.chat_id), c.name || "Unknown"])];
+      if (extra && !opts.some(([v]) => v === String(extra.chat_id))) opts.push([String(extra.chat_id), extra.chat_name || "Unknown"]);
+      chatSel.replaceChildren(...opts.map(([v, l]) => h("option", { value: v }, l)));
+    }
+    fillChats();
     const hintEl = h("p", { class: "card-description" });
     const HINTS = {
       exact: "Replies only when the whole message is exactly this word.",
@@ -551,13 +561,35 @@
     hint();
     const urlField = Field("Media link", urlInput);
     urlField.style.display = "none";
+    const saveBtn = Btn("Save rule", { ic: "plus", block: true, onclick: save });
+    const cancelBtn = Btn("Cancel editing", { variant: "outline", block: true, onclick: () => reset() });
+    cancelBtn.style.display = "none";
 
     const list = h("div", { class: "list" });
+    function reset() {
+      editingId = null; kwInput.value = ""; rpInput.value = ""; cdInput.value = ""; urlInput.value = ""; mediaSel.value = "";
+      fromInput.value = ""; toInput.value = ""; matchSel.value = "exact"; fillChats(); chatSel.value = "";
+      urlField.style.display = "none"; cancelBtn.style.display = "none"; saveBtn.lastChild.textContent = "Save rule"; hint();
+    }
     function edit(r) {
+      reset();
+      editingId = r.id;
       kwInput.value = r.keyword; rpInput.value = r.reply; cdInput.value = r.cooldown_min || "";
       matchSel.value = r.match_type || "exact"; mediaSel.value = r.media_type || ""; urlInput.value = r.media_url || "";
-      urlField.style.display = mediaSel.value ? "" : "none"; hint();
+      fillChats(r.chat_id != null ? r : null); chatSel.value = r.chat_id != null ? String(r.chat_id) : "";
+      fromInput.value = r.hours_start || ""; toInput.value = r.hours_end || "";
+      urlField.style.display = mediaSel.value ? "" : "none"; cancelBtn.style.display = ""; saveBtn.lastChild.textContent = "Update rule"; hint();
       root.closest(".sheet")?.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    async function save() {
+      const keyword = kwInput.value.trim(), reply = rpInput.value.trim();
+      if (!keyword || !reply) return toast("Fill in the keyword and the reply", "error");
+      if (!!fromInput.value !== !!toInput.value) return toast("Set both the start and the end hour, or clear both", "error");
+      const body = { id: editingId, keyword, reply, match_type: matchSel.value, cooldown_min: Number(cdInput.value) || 0, media_type: mediaSel.value || null, media_url: urlInput.value.trim() || null,
+        chat_id: chatSel.value || null, hours_start: fromInput.value || null, hours_end: toInput.value || null };
+      await api("/autoreplies", { method: "POST", body });
+      Object.assign(d, await api("/autoreplies"));
+      reset(); toast("Saved"); draw();
     }
     function draw() {
       list.replaceChildren(...(d.items.length ? d.items.map((r) =>
@@ -567,40 +599,33 @@
             h("div", { class: "rp" }, r.reply),
             h("div", { class: "badges" },
               Badge(MLABEL[r.match_type] || "Exact", "secondary"),
+              r.chat_id != null && Badge("👤 " + (r.chat_name || "Chat"), "outline"),
+              r.hours_start && Badge(`🕒 ${r.hours_start}–${r.hours_end}`, "outline"),
               r.cooldown_min > 0 && Badge("⏱ " + r.cooldown_min + " min", "outline"),
               r.media_type && Badge("📎 " + (MEDIA_LABEL[r.media_type] || r.media_type), "outline"))),
           Btn("", { variant: "ghost", size: "sm", ic: "trash", onclick: async () => {
-            await api("/autoreplies/delete", { method: "POST", body: { keyword: r.keyword } });
-            d.items = d.items.filter((x) => x.keyword !== r.keyword);
+            await api("/autoreplies/delete", { method: "POST", body: { id: r.id } });
+            d.items = d.items.filter((x) => x.id !== r.id);
+            if (editingId === r.id) reset();
             toast("Removed"); draw();
           } }))) : [Empty("No auto-replies yet.")]));
     }
     draw();
     root.replaceChildren(
-      h("p", { class: "card-description" }, "When a message matches, the bot replies instantly from your account. Tap a rule to edit it."),
+      h("p", { class: "card-description" }, "When a message matches, the bot replies instantly from your account. Tap a rule to edit it. A rule for one chat wins over a rule for everyone."),
       Card("Add or edit a rule", null, h("div", { class: "stack" },
         Field("Match type", matchSel), hintEl,
         Field("Keyword", kwInput),
         Field("Reply", rpInput),
+        Field("Applies to", chatSel),
+        Field("Only between (optional, your timezone)", h("div", { class: "time-pair" }, fromInput, h("span", {}, "to"), toInput,
+          Btn("Always", { variant: "ghost", size: "sm", onclick: () => { fromInput.value = ""; toInput.value = ""; } }))),
         Field("Cooldown (minutes, per person)", cdInput),
         Field("Attach", mediaSel),
         urlField,
-        Btn("Save rule", { ic: "plus", block: true, onclick: async () => {
-          const keyword = kwInput.value.trim(), reply = rpInput.value.trim();
-          if (!keyword || !reply) return toast("Fill in the keyword and the reply", "error");
-          const body = { keyword, reply, match_type: matchSel.value, cooldown_min: Number(cdInput.value) || 0, media_type: mediaSel.value || null, media_url: urlInput.value.trim() || null };
-          await api("/autoreplies", { method: "POST", body });
-          const key = body.match_type === "regex" ? keyword : keyword.toLowerCase();
-          const row = { keyword: key, reply, match_type: body.match_type, cooldown_min: body.cooldown_min, media_type: body.media_type, media_url: body.media_url };
-          const i = d.items.findIndex((x) => x.keyword === key);
-          if (i >= 0) d.items[i] = row; else d.items.push(row);
-          kwInput.value = ""; rpInput.value = ""; cdInput.value = ""; urlInput.value = ""; mediaSel.value = ""; urlField.style.display = "none";
-          toast("Saved"); draw();
-        } }))),
+        saveBtn, cancelBtn)),
       Card("Your rules", null, list, { flush: true }));
   }
-
-  // PIN lock for the console (the server enforces it; this card only manages it).
   function lockCard() {
     const box = h("div", { class: "stack" });
     const pinInput = (ph) => h("input", { class: "input", type: "password", inputmode: "numeric", autocomplete: "off", maxlength: "8", placeholder: ph });
