@@ -24,6 +24,8 @@ const VALUES = {
   flood_max: ["10", (v) => /^\d+$/.test(v) && Number(v) >= 3 && Number(v) <= 100],
   flood_window: ["60", (v) => /^\d+$/.test(v) && Number(v) >= 10 && Number(v) <= 600],
 };
+const CHAT_SORTS = { recent: "last_at DESC", added: "added DESC", name: "name COLLATE NOCASE ASC" };
+const LABEL_MAX = 24, NOTE_MAX = 500;
 const valuesOf = (cfg) => Object.fromEntries(Object.entries(VALUES).map(([k, [d]]) => [k, cfg[k] ?? d]));
 
 export async function handleApi(req, env, url) {
@@ -91,9 +93,33 @@ export async function handleApi(req, env, url) {
     if (p === "/chats" && m === "GET") {
       const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 30, 1), 100);
       const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
-      const { results } = await env.DB.prepare("SELECT chat_id, name, username, muted, added, dm_rule FROM chats ORDER BY added DESC LIMIT ? OFFSET ?")
-        .bind(limit, offset).all();
-      return json({ items: results, next_offset: offset + results.length, has_more: results.length === limit });
+      const sort = CHAT_SORTS[url.searchParams.get("sort")] || CHAT_SORTS.recent;
+      const q = (url.searchParams.get("q") || "").trim().slice(0, 60).replace(/[\\%_]/g, "\\$&");
+      const label = (url.searchParams.get("label") || "").trim().slice(0, LABEL_MAX);
+      const like = q ? `%${q}%` : "";
+      // Pinned chats always come first; the chosen sort orders the rest.
+      const { results } = await env.DB.prepare(
+        "SELECT chat_id, name, username, muted, added, dm_rule, last_at, pinned, label, note FROM chats " +
+        "WHERE (?1 = '' OR name LIKE ?1 ESCAPE '\\' OR username LIKE ?1 ESCAPE '\\') AND (?2 = '' OR label = ?2) " +
+        `ORDER BY pinned DESC, ${sort}, chat_id DESC LIMIT ?3 OFFSET ?4`)
+        .bind(like, label, limit, offset).all();
+      const labels = offset === 0
+        ? (await env.DB.prepare("SELECT label, COUNT(*) n FROM chats WHERE label IS NOT NULL GROUP BY label ORDER BY label").all()).results : undefined;
+      return json({ items: results, labels, next_offset: offset + results.length, has_more: results.length === limit });
+    }
+    if (p === "/chats/pin" && m === "POST") {
+      await env.DB.prepare("UPDATE chats SET pinned=? WHERE chat_id=?").bind(body.pinned ? 1 : 0, Number(body.chat_id)).run();
+      invalidate();
+      return json({ ok: true });
+    }
+    if (p === "/chats/meta" && m === "POST") {
+      const label = String(body.label ?? "").trim().replace(/\s+/g, " ");
+      const note = String(body.note ?? "").trim();
+      if (label.length > LABEL_MAX) return json({ error: `Label is too long (max ${LABEL_MAX})` }, 400);
+      if (note.length > NOTE_MAX) return json({ error: `Note is too long (max ${NOTE_MAX})` }, 400);
+      await env.DB.prepare("UPDATE chats SET label=?, note=? WHERE chat_id=?").bind(label || null, note || null, Number(body.chat_id)).run();
+      invalidate();
+      return json({ ok: true });
     }
     if (p === "/chats/mute" && m === "POST") {
       await env.DB.prepare("UPDATE chats SET muted=? WHERE chat_id=?").bind(body.muted ? 1 : 0, Number(body.chat_id)).run();

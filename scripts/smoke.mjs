@@ -62,6 +62,20 @@ r = await api("GET", "/stats?days=7"); ok("deleted chat stats erased", !r.body.t
 await hook(msg(998, "plain")); await wait(2000);
 r = await api("POST", "/chats/delete", { chat_id: 998 }); ok("delete chat without topic needs no force", r.status === 200 && r.body.topic_failed === false, JSON.stringify(r));
 
+// organise: label + note, filter, search, sort, pin
+r = await api("POST", "/chats/meta", { chat_id: 555, label: "VIP", note: "pays on time" }); ok("set label and note", r.status === 200);
+r = await api("POST", "/chats/meta", { chat_id: 555, label: "x".repeat(30) }); ok("reject too-long label", r.status === 400);
+r = await api("GET", "/chats?label=VIP"); ok("filter by label", r.body.items?.length === 1 && r.body.items[0].chat_id === 555 && r.body.items[0].note === "pays on time", JSON.stringify(r.body.items));
+r = await api("GET", "/chats?limit=10"); ok("labels listed with counts", r.body.labels?.some((l) => l.label === "VIP" && l.n === 1), JSON.stringify(r.body.labels));
+r = await api("GET", "/chats?q=U555"); ok("search by name", r.body.items?.length === 1 && r.body.items[0].chat_id === 555, JSON.stringify(r.body.items));
+r = await api("GET", "/chats?q=%25"); ok("search escapes % wildcard", r.body.items?.length === 0, JSON.stringify(r.body.items));
+r = await api("GET", "/chats?limit=10"); ok("last_at is tracked", r.body.items.every((c) => c.last_at > 0), JSON.stringify(r.body.items));
+await hook(msg(996, "hi")); await wait(2000);
+r = await api("POST", "/chats/pin", { chat_id: 996, pinned: true }); ok("pin a chat", r.status === 200);
+r = await api("GET", "/chats?sort=name&limit=10"); ok("pinned chat sorts first", r.body.items?.[0]?.chat_id === 996 && r.body.items[0].pinned === 1, JSON.stringify(r.body.items?.[0]));
+r = await api("POST", "/chats/pin", { chat_id: 996, pinned: false }); r = await api("GET", "/chats?sort=name&limit=10");
+ok("sort by name A-Z", r.body.items.map((c) => c.name).join() === [...r.body.items.map((c) => c.name)].sort((x, y) => x.localeCompare(y, "en", { sensitivity: "base" })).join(), JSON.stringify(r.body.items.map((c) => c.name)));
+
 // flood guard
 await api("POST", "/settings", { key: "flood_enabled", value: true });
 await api("POST", "/settings/value", { key: "flood_max", value: "3" });

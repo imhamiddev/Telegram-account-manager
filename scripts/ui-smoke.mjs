@@ -41,9 +41,20 @@ ok("chats: rows render with rule selector", w.document.querySelectorAll(".item s
 const sel = w.document.querySelector(".item select"); sel.value = "keep"; sel.dispatchEvent(new w.Event("change")); await wait(800);
 ok("chats: changing rule saves (no error toast)", !w.document.querySelector(".toast.error"));
 
+// label + note sheet
+w.document.querySelector(".item.static .tap").click(); await wait(300);
+const labIn = w.document.querySelector(".sheet input[maxlength=\"24\"]");
+ok("chats: tapping a chat opens the label/note sheet", !!labIn, text());
+if (labIn) {
+  labIn.value = "Customer"; w.document.querySelector(".sheet textarea").value = "call back Monday";
+  [...w.document.querySelectorAll(".sheet button")].find((b) => /^Save$/.test(b.textContent.trim()))?.click(); await wait(1200);
+  ok("chats: label and note appear on the row", /Customer/.test(text()) && /call back Monday/.test(text()), text());
+}
+ok("chats: sort and label filter selects render", w.document.querySelectorAll(".toolbar-row select").length >= 2);
+
 // delete chat: trash button opens a confirm sheet; the refused-topic path offers "remove anyway"
 const rowsBefore = w.document.querySelectorAll(".item.static").length;
-const trash = w.document.querySelector(".item.static .row-actions .btn");
+const trash = w.document.querySelector(".item.static [data-act=\"delete\"]");
 ok("chats: row has a delete button", !!trash);
 if (trash) {
   trash.click(); await wait(300);
