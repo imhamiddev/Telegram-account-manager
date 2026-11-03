@@ -11,6 +11,8 @@ const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_e
 const flagsOf = (cfg) => Object.fromEntries(Object.entries(FLAGS).map(([k, d]) => [k, (cfg[k] ?? d) === "1"]));
 const groupOf = (cfg) => (cfg.group_id ? { id: cfg.group_id, title: cfg.group_title || "Backup group", is_forum: cfg.group_is_forum === "1" } : null);
 const activeConnection = (env) => env.DB.prepare("SELECT id FROM connections WHERE is_enabled=1 LIMIT 1").first();
+// A usable chat id from a request body (null/""/garbage would otherwise turn into 0 or NaN).
+const chatIdOf = (b) => (b.chat_id == null || b.chat_id === "" ? null : Number.isSafeInteger(Number(b.chat_id)) ? Number(b.chat_id) : null);
 const ACCENTS = ["red", "green", "yellow", "purple", "pink", "blue", "orange"];
 const DM_RULES = ["default", "keep", "close"];
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -118,28 +120,34 @@ export async function handleApi(req, env, url) {
       return json({ items: results, labels, next_offset: offset + results.length, has_more: results.length === limit });
     }
     if (p === "/chats/pin" && m === "POST") {
-      await env.DB.prepare("UPDATE chats SET pinned=? WHERE chat_id=?").bind(body.pinned ? 1 : 0, Number(body.chat_id)).run();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
+      await env.DB.prepare("UPDATE chats SET pinned=? WHERE chat_id=?").bind(body.pinned ? 1 : 0, id).run();
       invalidate();
       return json({ ok: true });
     }
     if (p === "/chats/meta" && m === "POST") {
       const label = String(body.label ?? "").trim().replace(/\s+/g, " ");
       const note = String(body.note ?? "").trim();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
       if (label.length > LABEL_MAX) return json({ error: `Label is too long (max ${LABEL_MAX})` }, 400);
       if (note.length > NOTE_MAX) return json({ error: `Note is too long (max ${NOTE_MAX})` }, 400);
-      await env.DB.prepare("UPDATE chats SET label=?, note=? WHERE chat_id=?").bind(label || null, note || null, Number(body.chat_id)).run();
+      await env.DB.prepare("UPDATE chats SET label=?, note=? WHERE chat_id=?").bind(label || null, note || null, id).run();
       invalidate();
       return json({ ok: true });
     }
     if (p === "/chats/mute" && m === "POST") {
-      await env.DB.prepare("UPDATE chats SET muted=? WHERE chat_id=?").bind(body.muted ? 1 : 0, Number(body.chat_id)).run();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
+      await env.DB.prepare("UPDATE chats SET muted=? WHERE chat_id=?").bind(body.muted ? 1 : 0, id).run();
       invalidate();
       return json({ ok: true });
     }
 
     if (p === "/chats/delete" && m === "POST") {
-      const chatId = Number(body.chat_id);
-      if (!Number.isSafeInteger(chatId)) return json({ error: "Invalid chat" }, 400);
+      const chatId = chatIdOf(body);
+      if (chatId === null) return json({ error: "Invalid chat" }, 400);
       const r = await deleteChat(env, chatId, { force: !!body.force });
       if (!r.ok) return json({ error: r.error, topic_failed: true }, 409);
       return json(r);
@@ -160,7 +168,9 @@ export async function handleApi(req, env, url) {
 
     if (p === "/chats/rule" && m === "POST") {
       if (!DM_RULES.includes(body.rule)) return json({ error: "Unknown rule" }, 400);
-      await env.DB.prepare("UPDATE chats SET dm_rule=? WHERE chat_id=?").bind(body.rule, Number(body.chat_id)).run();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
+      await env.DB.prepare("UPDATE chats SET dm_rule=? WHERE chat_id=?").bind(body.rule, id).run();
       invalidate();
       return json({ ok: true });
     }
