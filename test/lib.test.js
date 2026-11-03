@@ -36,3 +36,10 @@ test("redact: the bot token never survives in an error text", () => {
   assert.equal(redact({}, "plain"), "plain");
   assert.equal(redact(env, null), "");
 });
+
+test("safeEqual: equal strings match, different length or content do not", () => {
+  assert.equal(safeEqual("abc", "abc"), true);
+  assert.equal(safeEqual("abc", "abd"), false);
+  assert.equal(safeEqual("abc", "abcd"), false);
+  assert.equal(safeEqual("", ""), true);
+});
