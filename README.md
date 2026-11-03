@@ -332,6 +332,16 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 > [!IMPORTANT]
 > Migrations are intentionally **not** run automatically on deploy. They are additive, so **run `npm run db:migrate` first, then deploy**: the new code expects the new tables and columns.
 
+## 🔒 Security
+
+- **Who can use it**: only the Telegram account in `OWNER_ID`. Mini App requests must carry Telegram-signed `initData` (HMAC with the bot token, at most 24 h old, never dated in the future). Anyone else gets `401`.
+- **Webhook**: Telegram's secret header is compared in constant time; with no `WEBHOOK_SECRET` configured the Worker rejects every webhook (fail closed).
+- **Console PIN**: PBKDF2-SHA256 with a random salt, 5 wrong tries lock the console for 5 minutes, unlock tokens expire after 15 minutes.
+- **Requests**: JSON bodies are capped at 64 KB, `chat_id` is validated, internal error text is never sent to the browser (only logged).
+- **Secrets**: the bot token is redacted from error messages and the error log. Keep `BOT_TOKEN` and `WEBHOOK_SECRET` in Cloudflare secrets (`wrangler secret put`), never in `wrangler.toml`; `.dev.vars` and `.env` are git-ignored.
+- **Mini App**: served with a Content-Security-Policy (scripts only from itself and `telegram.org`), `nosniff` and `no-referrer`.
+- **Regex auto-replies**: patterns with nested quantifiers, alternation inside a repeated group, or back-references are refused (ReDoS), and only the first 500 characters of a message are matched.
+
 ## 🧪 Testing & CI
 
 | Command | What it does |
