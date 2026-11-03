@@ -1,4 +1,4 @@
-import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec } from "./lib.js";
+import { esc, sleep, tg, tgStrict, RateLimit, tehranStamp, displayName, nowSec, redact } from "./lib.js";
 import { scheduleFollowup, cancelFollowup } from "./followups.js";
 import { shouldCloseDm, scheduleActive, buildRules, matchAutoreply, cooldownCutoff, dayKey, parseWordList, findBannedWord, floodExceeded, isTrusted } from "./rules.js";
 
@@ -44,7 +44,7 @@ export async function isOwnerConnection(env, st, id) {
 export async function logError(env, scope, message) {
   try {
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO error_log(at,scope,message) VALUES(?,?,?)").bind(nowSec(), scope, String(message ?? "").slice(0, 300)),
+      env.DB.prepare("INSERT INTO error_log(at,scope,message) VALUES(?,?,?)").bind(nowSec(), scope, redact(env, message).slice(0, 300)),
       env.DB.prepare("DELETE FROM error_log WHERE id NOT IN (SELECT id FROM error_log ORDER BY id DESC LIMIT 50)"),
     ]);
   } catch { /* logging must never break message handling */ }

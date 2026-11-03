@@ -11,6 +11,12 @@ export class TgError extends Error {
 // TG_API only exists in local tests, where it points at a fake Telegram server.
 const api = (env, method) => `${env.TG_API || "https://api.telegram.org"}/bot${env.BOT_TOKEN}/${method}`;
 
+// Never let the bot token leak through an error message (a failed fetch can echo the request URL).
+export const redact = (env, text) => {
+  const t = env?.BOT_TOKEN, s = String(text ?? "");
+  return t ? s.split(t).join("***") : s;
+};
+
 // Throws on failure
 export async function tgStrict(env, method, body) {
   const r = await fetch(api(env, method), {
@@ -34,7 +40,7 @@ export async function tg(env, method, body) {
     });
     return await r.json();
   } catch (e) {
-    return { ok: false, description: String(e) };
+    return { ok: false, description: redact(env, e) };
   }
 }
 
