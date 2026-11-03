@@ -3,6 +3,7 @@ import { invalidate, onBusinessMessage, onDeleted, logError } from "./backup.js"
 import { handleApi } from "./api.js";
 import { runCleanup } from "./chats.js";
 import { runFollowups } from "./followups.js";
+import { runMaintenance } from "./maintenance.js";
 
 async function onCommand(env, m, origin) {
   const cmd = (m.text || "").trim().split(/\s+/)[0].split("@")[0].toLowerCase();
@@ -50,11 +51,17 @@ async function handle(update, env, origin) {
 }
 
 export default {
-  // Cron triggers (see wrangler.toml): every minute sends due follow-ups; 03:00 UTC daily removes inactive chats.
+  // Cron triggers (see wrangler.toml): every minute sends due follow-ups; 03:00 UTC daily removes inactive chats and prunes old counters.
   async scheduled(controller, env, ctx) {
     ctx.waitUntil((async () => {
-      try { await (controller.cron === "0 3 * * *" ? runCleanup(env) : runFollowups(env)); }
-      catch (e) { await logError(env, "cron", e.message); }
+      try {
+        if (controller.cron === "0 3 * * *") {
+          // independent jobs: one failing must not skip the other
+          const cfg = await loadSettings(env);
+          await Promise.allSettled([runCleanup(env), runMaintenance(env, cfg.tz || "Asia/Tehran")])
+            .then((rs) => Promise.all(rs.filter((r) => r.status === "rejected").map((r) => logError(env, "cron", r.reason?.message))));
+        } else await runFollowups(env);
+      } catch (e) { await logError(env, "cron", e.message); }
     })());
   },
   async fetch(req, env, ctx) {

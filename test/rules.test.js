@@ -263,3 +263,10 @@ test("hours and chat scope combine", () => {
   assert.equal(matchAutoreply(rs, "hi", { chatId: 5, now: new Date("2026-01-05T12:00:00Z"), tz: "UTC" }), null);
   assert.equal(matchAutoreply(rs, "hi", { chatId: 6, now: new Date("2026-01-05T23:00:00Z"), tz: "UTC" }), null);
 });
+
+test("housekeeping: cooldown records outlive the longest possible cooldown", async () => {
+  const { HITS_RETENTION_SEC, MAX_COOLDOWN_MIN, FLOOD_RETENTION_SEC, STATS_RETENTION_DAYS } = await import("../src/rules.js");
+  assert.ok(HITS_RETENTION_SEC > MAX_COOLDOWN_MIN * 60, "pruning must never drop a record that could still block a reply");
+  assert.ok(FLOOD_RETENTION_SEC >= 600);
+  assert.ok(STATS_RETENTION_DAYS >= 90);
+});
