@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashPin, verifyPin, signUnlock, checkUnlock } from "../src/lib.js";
+import { createHmac } from "node:crypto";
+import { hashPin, verifyPin, signUnlock, checkUnlock, redact, safeEqual, verifyInitData, nowSec, withSecurityHeaders, CSP } from "../src/lib.js";
 
 test("pin hashing: correct PIN verifies, wrong PIN does not", async () => {
   const stored = await hashPin("4821");
