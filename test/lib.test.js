@@ -43,3 +43,30 @@ test("safeEqual: equal strings match, different length or content do not", () =>
   assert.equal(safeEqual("abc", "abcd"), false);
   assert.equal(safeEqual("", ""), true);
 });
+
+// ---- Mini App initData ----
+const ENV = { BOT_TOKEN: "123456:TESTTOKEN", OWNER_ID: "42" };
+function signed(fields) {
+  const params = new URLSearchParams(fields);
+  const dcs = [...params.entries()].map(([k, v]) => `${k}=${v}`).sort().join("\n");
+  const secret = createHmac("sha256", "WebAppData").update(ENV.BOT_TOKEN).digest();
+  params.set("hash", createHmac("sha256", secret).update(dcs).digest("hex"));
+  return params.toString();
+}
+const user = (id) => JSON.stringify({ id, first_name: "T" });
+
+test("initData: a valid, fresh, owner-signed payload is accepted", async () => {
+  const u = await verifyInitData(ENV, signed({ user: user(42), auth_date: String(nowSec()) }));
+  assert.equal(u?.id, 42);
+});
+
+test("initData: tampering, another user, stale or missing auth_date are rejected", async () => {
+  assert.equal(await verifyInitData(ENV, signed({ user: user(7), auth_date: String(nowSec()) })), null, "not the owner");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42), auth_date: String(nowSec() - 90000) })), null, "older than 24h");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42) })), null, "no auth_date");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42), auth_date: "soon" })), null, "garbage auth_date");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42), auth_date: String(nowSec() + 3600) })), null, "from the future");
+  const ok = signed({ user: user(42), auth_date: String(nowSec()) });
+  assert.equal(await verifyInitData(ENV, ok.replace("T", "X")), null, "tampered");
+  assert.equal(await verifyInitData(ENV, ""), null);
+});
