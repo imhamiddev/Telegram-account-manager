@@ -251,6 +251,19 @@ await api("POST", "/settings", { key: "topics_enabled", value: false });
 sql("DELETE FROM topics WHERE chat_id=7001; DELETE FROM chats WHERE chat_id=7001; DELETE FROM settings WHERE key='group_is_forum';");
 fake.clear();
 
+// ---- cooldowns belong to a rule, not to a keyword ----
+fake.clear(); fake.set("sendMessage");
+r = await api("POST", "/autoreplies", { keyword: "pingcd", reply: "global", match_type: "exact", cooldown_min: 60 }); const cdA = r.body.id;
+await hook(msg(8001, "pingcd")); await wait(1500);
+ok("a cooldown is recorded under the rule id", count(`SELECT COUNT(*) n FROM autoreply_hits WHERE rule_id=${cdA} AND chat_id=8001`) === 1);
+r = await api("POST", "/autoreplies", { keyword: "pingcd", reply: "scoped", match_type: "exact", cooldown_min: 60, chat_id: 8001 }); const cdB = r.body.id;
+await hook(msg(8001, "pingcd")); await wait(1500);
+ok("a second rule with the same keyword has its own cooldown", count(`SELECT COUNT(*) n FROM autoreply_hits WHERE rule_id=${cdB} AND chat_id=8001`) === 1 && fake.calls.some((c) => c.body.text === "scoped"), JSON.stringify(fake.calls.map((c) => c.body.text)));
+await api("POST", "/autoreplies/delete", { id: cdB });
+ok("deleting one rule clears only its own cooldowns", count(`SELECT COUNT(*) n FROM autoreply_hits WHERE rule_id=${cdB}`) === 0 && count(`SELECT COUNT(*) n FROM autoreply_hits WHERE rule_id=${cdA}`) === 1);
+await api("POST", "/autoreplies/delete", { id: cdA });
+sql("DELETE FROM chats WHERE chat_id=8001;"); fake.clear();
+
 // ---- daily housekeeping ----
 sql("DELETE FROM autoreply_hits; DELETE FROM flood; DELETE FROM daily_stats; INSERT INTO autoreply_hits(rule_id,chat_id,last_at) VALUES(901,1,strftime('%s','now')-20*86400),(902,1,strftime('%s','now')-3600); INSERT INTO flood(chat_id,window_start,count) VALUES(1,strftime('%s','now')-3*86400,5),(2,strftime('%s','now'),1); INSERT INTO daily_stats(day,chat_id,msgs,replies,deleted) VALUES('2020-01-01',1,1,0,0),(date('now'),1,1,0,0);");
 await fetch(BASE + "/__scheduled?cron=0+3+*+*+*"); await wait(2500);
