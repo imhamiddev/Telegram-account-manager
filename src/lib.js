@@ -90,7 +90,10 @@ export async function verifyInitData(env, initData) {
     let diff = 0;
     for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ hash.charCodeAt(i);
     if (diff !== 0) return null;
-    if (nowSec() - Number(params.get("auth_date")) > 86400) return null;
+    const authDate = Number(params.get("auth_date"));
+    if (!Number.isFinite(authDate) || authDate <= 0) return null; // a missing auth_date used to slip through (NaN > x is false)
+    const age = nowSec() - authDate;
+    if (age > 86400 || age < -300) return null; // too old, or dated in the future
     const user = JSON.parse(params.get("user") || "{}");
     return String(user.id) === env.OWNER_ID ? user : null;
   } catch {
