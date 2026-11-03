@@ -1,15 +1,18 @@
-import { verifyInitData, loadSettings, setSetting, tg, tgStrict, nowSec, hashPin, verifyPin, signUnlock, checkUnlock } from "./lib.js";
+import { verifyInitData, loadSettings, setSetting, tg, tgStrict, TgError, RateLimit, nowSec, hashPin, verifyPin, signUnlock, checkUnlock } from "./lib.js";
 import { invalidate, logError } from "./backup.js";
 import { deleteChat, runCleanup } from "./chats.js";
 import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS } from "./rules.js";
 
+const MAX_BODY = 64 * 1024;
 const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 
 const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_enabled: "0", sched_close_dm: "1", sched_autoreply: "1", spam_enabled: "0", flood_enabled: "0", cleanup_enabled: "0" };
 const flagsOf = (cfg) => Object.fromEntries(Object.entries(FLAGS).map(([k, d]) => [k, (cfg[k] ?? d) === "1"]));
 const groupOf = (cfg) => (cfg.group_id ? { id: cfg.group_id, title: cfg.group_title || "Backup group", is_forum: cfg.group_is_forum === "1" } : null);
 const activeConnection = (env) => env.DB.prepare("SELECT id FROM connections WHERE is_enabled=1 LIMIT 1").first();
+// A usable chat id from a request body (null/""/garbage would otherwise turn into 0 or NaN).
+const chatIdOf = (b) => (b.chat_id == null || b.chat_id === "" ? null : Number.isSafeInteger(Number(b.chat_id)) ? Number(b.chat_id) : null);
 const ACCENTS = ["red", "green", "yellow", "purple", "pink", "blue", "orange"];
 const DM_RULES = ["default", "keep", "close"];
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -38,7 +41,13 @@ export async function handleApi(req, env, url) {
 
   const p = url.pathname.replace(/^\/api/, "");
   const m = req.method;
-  const body = m === "POST" ? await req.json().catch(() => ({})) : {};
+  let body = {};
+  if (m === "POST") {
+    const raw = await req.text();
+    if (raw.length > MAX_BODY) return json({ error: "Request too large" }, 413);
+    try { body = JSON.parse(raw || "{}"); } catch { body = {}; }
+    if (!body || typeof body !== "object" || Array.isArray(body)) body = {}; // "null" or a bare array used to crash the handlers
+  }
 
   try {
     // ----- console lock: with a PIN set, every route except the lock ones needs a valid X-Unlock token -----
@@ -111,28 +120,34 @@ export async function handleApi(req, env, url) {
       return json({ items: results, labels, next_offset: offset + results.length, has_more: results.length === limit });
     }
     if (p === "/chats/pin" && m === "POST") {
-      await env.DB.prepare("UPDATE chats SET pinned=? WHERE chat_id=?").bind(body.pinned ? 1 : 0, Number(body.chat_id)).run();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
+      await env.DB.prepare("UPDATE chats SET pinned=? WHERE chat_id=?").bind(body.pinned ? 1 : 0, id).run();
       invalidate();
       return json({ ok: true });
     }
     if (p === "/chats/meta" && m === "POST") {
       const label = String(body.label ?? "").trim().replace(/\s+/g, " ");
       const note = String(body.note ?? "").trim();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
       if (label.length > LABEL_MAX) return json({ error: `Label is too long (max ${LABEL_MAX})` }, 400);
       if (note.length > NOTE_MAX) return json({ error: `Note is too long (max ${NOTE_MAX})` }, 400);
-      await env.DB.prepare("UPDATE chats SET label=?, note=? WHERE chat_id=?").bind(label || null, note || null, Number(body.chat_id)).run();
+      await env.DB.prepare("UPDATE chats SET label=?, note=? WHERE chat_id=?").bind(label || null, note || null, id).run();
       invalidate();
       return json({ ok: true });
     }
     if (p === "/chats/mute" && m === "POST") {
-      await env.DB.prepare("UPDATE chats SET muted=? WHERE chat_id=?").bind(body.muted ? 1 : 0, Number(body.chat_id)).run();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
+      await env.DB.prepare("UPDATE chats SET muted=? WHERE chat_id=?").bind(body.muted ? 1 : 0, id).run();
       invalidate();
       return json({ ok: true });
     }
 
     if (p === "/chats/delete" && m === "POST") {
-      const chatId = Number(body.chat_id);
-      if (!Number.isSafeInteger(chatId)) return json({ error: "Invalid chat" }, 400);
+      const chatId = chatIdOf(body);
+      if (chatId === null) return json({ error: "Invalid chat" }, 400);
       const r = await deleteChat(env, chatId, { force: !!body.force });
       if (!r.ok) return json({ error: r.error, topic_failed: true }, 409);
       return json(r);
@@ -153,7 +168,9 @@ export async function handleApi(req, env, url) {
 
     if (p === "/chats/rule" && m === "POST") {
       if (!DM_RULES.includes(body.rule)) return json({ error: "Unknown rule" }, 400);
-      await env.DB.prepare("UPDATE chats SET dm_rule=? WHERE chat_id=?").bind(body.rule, Number(body.chat_id)).run();
+      const id = chatIdOf(body);
+      if (id === null) return json({ error: "Invalid chat" }, 400);
+      await env.DB.prepare("UPDATE chats SET dm_rule=? WHERE chat_id=?").bind(body.rule, id).run();
       invalidate();
       return json({ ok: true });
     }
@@ -354,6 +371,8 @@ export async function handleApi(req, env, url) {
     return json({ error: "Not found" }, 404);
   } catch (e) {
     await logError(env, "api", `${m} ${p}: ${e.message}`);
-    return json({ error: e.message || "Server error" }, 500);
+    // Telegram's own descriptions are safe and useful in the console; anything else (D1, runtime) stays in the error log only.
+    const safe = e instanceof TgError || e instanceof RateLimit;
+    return json({ error: safe ? e.message : "Server error" }, 500);
   }
 }

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashPin, verifyPin, signUnlock, checkUnlock } from "../src/lib.js";
+import { createHmac } from "node:crypto";
+import { hashPin, verifyPin, signUnlock, checkUnlock, redact, safeEqual, verifyInitData, nowSec, withSecurityHeaders, CSP } from "../src/lib.js";
 
 test("pin hashing: correct PIN verifies, wrong PIN does not", async () => {
   const stored = await hashPin("4821");
@@ -27,4 +28,56 @@ test("unlock token: valid, tampered, expired and wrong-key tokens", async () => 
   assert.equal(await checkUnlock(env, await signUnlock(env, -5)), false);      // expired
   assert.equal(await checkUnlock(env, ""), false);
   assert.equal(await checkUnlock(env, undefined), false);
+});
+
+test("redact: the bot token never survives in an error text", () => {
+  const env = { BOT_TOKEN: "123:SECRET" };
+  assert.equal(redact(env, new Error("fetch failed for https://api.telegram.org/bot123:SECRET/sendMessage")), "Error: fetch failed for https://api.telegram.org/bot***/sendMessage");
+  assert.equal(redact({}, "plain"), "plain");
+  assert.equal(redact(env, null), "");
+});
+
+test("safeEqual: equal strings match, different length or content do not", () => {
+  assert.equal(safeEqual("abc", "abc"), true);
+  assert.equal(safeEqual("abc", "abd"), false);
+  assert.equal(safeEqual("abc", "abcd"), false);
+  assert.equal(safeEqual("", ""), true);
+});
+
+// ---- Mini App initData ----
+const ENV = { BOT_TOKEN: "123456:TESTTOKEN", OWNER_ID: "42" };
+function signed(fields) {
+  const params = new URLSearchParams(fields);
+  const dcs = [...params.entries()].map(([k, v]) => `${k}=${v}`).sort().join("\n");
+  const secret = createHmac("sha256", "WebAppData").update(ENV.BOT_TOKEN).digest();
+  params.set("hash", createHmac("sha256", secret).update(dcs).digest("hex"));
+  return params.toString();
+}
+const user = (id) => JSON.stringify({ id, first_name: "T" });
+
+test("initData: a valid, fresh, owner-signed payload is accepted", async () => {
+  const u = await verifyInitData(ENV, signed({ user: user(42), auth_date: String(nowSec()) }));
+  assert.equal(u?.id, 42);
+});
+
+test("initData: tampering, another user, stale or missing auth_date are rejected", async () => {
+  assert.equal(await verifyInitData(ENV, signed({ user: user(7), auth_date: String(nowSec()) })), null, "not the owner");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42), auth_date: String(nowSec() - 90000) })), null, "older than 24h");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42) })), null, "no auth_date");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42), auth_date: "soon" })), null, "garbage auth_date");
+  assert.equal(await verifyInitData(ENV, signed({ user: user(42), auth_date: String(nowSec() + 3600) })), null, "from the future");
+  const ok = signed({ user: user(42), auth_date: String(nowSec()) });
+  assert.equal(await verifyInitData(ENV, ok.replace("T", "X")), null, "tampered");
+  assert.equal(await verifyInitData(ENV, ""), null);
+});
+
+test("withSecurityHeaders: adds CSP, nosniff and no-referrer without touching the body", async () => {
+  const r = withSecurityHeaders(new Response("hi", { headers: { "content-type": "text/html" } }));
+  assert.equal(r.headers.get("content-security-policy"), CSP);
+  assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(r.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(r.headers.get("content-type"), "text/html");
+  assert.equal(await r.text(), "hi");
+  assert.match(CSP, /script-src 'self' https:\/\/telegram\.org/);
+  assert.doesNotMatch(CSP, /script-src[^;]*unsafe/);
 });

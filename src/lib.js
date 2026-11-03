@@ -11,6 +11,12 @@ export class TgError extends Error {
 // TG_API only exists in local tests, where it points at a fake Telegram server.
 const api = (env, method) => `${env.TG_API || "https://api.telegram.org"}/bot${env.BOT_TOKEN}/${method}`;
 
+// Never let the bot token leak through an error message (a failed fetch can echo the request URL).
+export const redact = (env, text) => {
+  const t = env?.BOT_TOKEN, s = String(text ?? "");
+  return t ? s.split(t).join("***") : s;
+};
+
 // Throws on failure
 export async function tgStrict(env, method, body) {
   const r = await fetch(api(env, method), {
@@ -34,7 +40,7 @@ export async function tg(env, method, body) {
     });
     return await r.json();
   } catch (e) {
-    return { ok: false, description: String(e) };
+    return { ok: false, description: redact(env, e) };
   }
 }
 
@@ -84,7 +90,10 @@ export async function verifyInitData(env, initData) {
     let diff = 0;
     for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ hash.charCodeAt(i);
     if (diff !== 0) return null;
-    if (nowSec() - Number(params.get("auth_date")) > 86400) return null;
+    const authDate = Number(params.get("auth_date"));
+    if (!Number.isFinite(authDate) || authDate <= 0) return null; // a missing auth_date used to slip through (NaN > x is false)
+    const age = nowSec() - authDate;
+    if (age > 86400 || age < -300) return null; // too old, or dated in the future
     const user = JSON.parse(params.get("user") || "{}");
     return String(user.id) === env.OWNER_ID ? user : null;
   } catch {
@@ -131,4 +140,19 @@ export async function checkUnlock(env, token) {
   const [exp, sig] = String(token || "").split(".");
   if (!exp || !sig || !(Number(exp) > nowSec())) return false;
   return safeEqual(await unlockMac(env, exp), sig);
+}
+
+// ---- Response hardening ----
+// The Mini App only needs its own files plus Telegram's WebApp script. (style-src allows inline because the UI sets style attributes.)
+// No frame-ancestors rule on purpose: Telegram clients embed the Mini App and their origins vary.
+export const CSP = "default-src 'none'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'";
+export const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Content-Security-Policy": CSP,
+};
+export function withSecurityHeaders(res) {
+  const r = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) r.headers.set(k, v);
+  return r;
 }
