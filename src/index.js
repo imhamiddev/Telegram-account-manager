@@ -1,4 +1,4 @@
-import { tg, setSetting, loadSettings } from "./lib.js";
+import { tg, setSetting, loadSettings, safeEqual } from "./lib.js";
 import { invalidate, onBusinessMessage, onDeleted, logError } from "./backup.js";
 import { handleApi } from "./api.js";
 import { runCleanup } from "./chats.js";
@@ -61,9 +61,11 @@ export default {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/api/")) return handleApi(req, env, url);
     if (req.method === "POST") {
-      if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET)
+      const sent = req.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+      if (!env.WEBHOOK_SECRET || !safeEqual(sent, env.WEBHOOK_SECRET)) // constant-time; an unset secret rejects everything
         return new Response("forbidden", { status: 403 });
-      const update = await req.json();
+      const update = await req.json().catch(() => null);
+      if (!update || typeof update !== "object") return new Response("bad request", { status: 400 });
       ctx.waitUntil(handle(update, env, url.origin).catch((e) => { console.error(e); return logError(env, "webhook", e.message); }));
       return new Response("ok"); // answer Telegram immediately, work continues in the background
     }
