@@ -270,3 +270,14 @@ test("housekeeping: cooldown records outlive the longest possible cooldown", asy
   assert.ok(FLOOD_RETENTION_SEC >= 600);
   assert.ok(STATS_RETENTION_DAYS >= 90);
 });
+
+test("regex safety: alternation and quantifiers inside a repeated group are refused, plain groups are fine", () => {
+  for (const bad of ["(a|aa)+$", "(a|a)*b", "((a|aa))+", "(?:a|aa)+$", "(\\w+\\s?)+$", "([a-z]+)*x"]) assert.equal(isSafeRegex(bad), false, bad);
+  for (const good of ["(hi|hello)", "(hi|hello)?", "^(a|b)$", "(ab)+", "(a+)", "(foo|bar) \\d+", "[(a|b)]+", "\\(a|b\\)+", "^order\\s*#?\\d{3,}$"]) assert.equal(isSafeRegex(good), true, good);
+});
+
+test("regex safety: a pattern that passes cannot hang on hostile input", () => {
+  const t = Date.now();
+  for (const p of ["^(hi|hello)+x", "(ab)+c", "^\\w+@\\w+$"]) if (isSafeRegex(p)) new RegExp(p, "iu").test("a".repeat(40) + "!");
+  assert.ok(Date.now() - t < 200);
+});
