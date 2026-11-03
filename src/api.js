@@ -3,6 +3,7 @@ import { invalidate, logError } from "./backup.js";
 import { deleteChat, runCleanup } from "./chats.js";
 import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS } from "./rules.js";
 
+const MAX_BODY = 64 * 1024;
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
@@ -38,7 +39,13 @@ export async function handleApi(req, env, url) {
 
   const p = url.pathname.replace(/^\/api/, "");
   const m = req.method;
-  const body = m === "POST" ? await req.json().catch(() => ({})) : {};
+  let body = {};
+  if (m === "POST") {
+    const raw = await req.text();
+    if (raw.length > MAX_BODY) return json({ error: "Request too large" }, 413);
+    try { body = JSON.parse(raw || "{}"); } catch { body = {}; }
+    if (!body || typeof body !== "object" || Array.isArray(body)) body = {}; // "null" or a bare array used to crash the handlers
+  }
 
   try {
     // ----- console lock: with a PIN set, every route except the lock ones needs a valid X-Unlock token -----
