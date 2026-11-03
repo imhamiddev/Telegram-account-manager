@@ -349,7 +349,7 @@ To change the schema, add `migrations/0003_something.sql` and run `npm run db:mi
 | `npm run lint` | ESLint over `src/`, `public/`, `test/`, `scripts/` |
 | `npm test` | Unit tests for the decision logic (auto-reply matching, schedule, Close DM rules, spam, PIN, crypto) |
 | `npm run check` | Lint + unit tests (what CI runs) |
-| `npm run dev:test`, then `npm run smoke` | Integration test: Worker + local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route (103 checks) |
+| `npm run dev:test`, then `npm run smoke` | Integration test: Worker + local D1, applies all migrations, fires fake Telegram webhooks and exercises every API route (106 checks) |
 | `npm run smoke:ui` | Runs the real Mini App in jsdom against that Worker: every tab, the auto-reply editor, the PIN lock flow (42 checks) |
 
 An optional GitHub Actions workflow lives in [`docs/ci.yml.example`](docs/ci.yml.example). Copy it to `.github/workflows/ci.yml` to run `npm run check` on every push and pull request (checks only, it never deploys).
@@ -380,7 +380,7 @@ An optional GitHub Actions workflow lives in [`docs/ci.yml.example`](docs/ci.yml
 │   └── lib.js          # Telegram helpers, crypto, formatting
 ├── public/             # Mini App (index.html, app.js, app.css)
 ├── assets/             # README visuals (animated SVGs)
-├── migrations/         # D1 migrations (0001 ... 0012)
+├── migrations/         # D1 migrations (0001 ... 0013)
 ├── test/               # unit tests (node --test)
 ├── scripts/            # integration smoke test
 ├── db-legacy/          # old hand-run schema files, reference only
