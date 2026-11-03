@@ -51,13 +51,40 @@ const MATCH_TYPES = ["exact", "contains", "regex"];
 export const isMatchType = (v) => MATCH_TYPES.includes(v);
 
 /**
+ * True when a group that is itself repeated (+, * or {n,m}) contains a quantifier or an alternation, at any depth.
+ * Those shapes backtrack exponentially: (a+)+ , (.*)*x , (a|aa)+$ . Escapes and [character classes] are skipped.
+ */
+function hasRiskyGroup(p) {
+  const stack = [];
+  let inClass = false;
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === "\\") { i++; continue; }
+    if (inClass) { if (c === "]") inClass = false; continue; }
+    if (c === "[") { inClass = true; continue; }
+    const top = stack.at(-1);
+    if (c === "(") stack.push({ alt: false, quant: false });
+    else if (c === ")") {
+      const g = stack.pop();
+      if (!g) continue;
+      const repeated = i + 1 < p.length && "+*{".includes(p[i + 1]);
+      if (repeated && (g.alt || g.quant)) return true;
+      const parent = stack.at(-1);
+      if (parent) { parent.alt ||= g.alt; parent.quant ||= g.quant || repeated; }
+    } else if (top && c === "|") top.alt = true;
+    else if (top && "+*{".includes(c)) top.quant = true;
+  }
+  return false;
+}
+
+/**
  * Reject regexes that are likely to backtrack catastrophically (ReDoS) or are just too big.
  * Conservative on purpose: a nested quantifier like (a+)+ is refused.
  */
 export function isSafeRegex(pattern) {
   const p = String(pattern ?? "");
   if (!p || p.length > 100) return false;
-  if (/\([^)]*[+*}][^)]*\)\s*[+*{]/.test(p)) return false; // nested quantifiers
+  if (hasRiskyGroup(p)) return false;                         // (a+)+ and (a|aa)+
   if (/\\[1-9]/.test(p)) return false;                      // back-references
   try { new RegExp(p, "iu"); return true; } catch { return false; }
 }
