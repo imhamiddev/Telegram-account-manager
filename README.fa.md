@@ -373,7 +373,7 @@ erDiagram
 | `npm run lint` | ESLint روی `src/`، `public/`، `test/` و `scripts/` |
 | `npm test` | تست واحد برای منطق تصمیم‌گیری (تطبیق ریپلای، زمان‌بندی، قوانین بستن پیوی، اسپم، پین، رمزنگاری) |
 | `npm run check` | لینت و تست واحد (همونی که CI اجرا می‌کنه) |
-| `npm run dev:test` و بعد `npm run smoke` | تست یکپارچه: ورکر + D1 لوکال، اجرای همه مایگریشن‌ها، وبهوک‌های تلگرام جعلی و تست همه مسیرهای API (۱۰۳ چک) |
+| `npm run dev:test` و بعد `npm run smoke` | تست یکپارچه: ورکر + D1 لوکال، اجرای همه مایگریشن‌ها، وبهوک‌های تلگرام جعلی و تست همه مسیرهای API (۱۰۶ چک) |
 | `npm run smoke:ui` | خود Mini App واقعی رو توی jsdom روی همون ورکر اجرا می‌کنه: همه تب‌ها، ویرایشگر ریپلای خودکار و جریان قفل پین (۴۲ چک) |
 
 یه workflow اختیاری برای GitHub Actions توی [`docs/ci.yml.example`](docs/ci.yml.example) هست. کپیش کن به `.github/workflows/ci.yml` تا با هر پوش و پول‌ریکوئست `npm run check` اجرا بشه (فقط چک می‌کنه و هیچ‌وقت دیپلوی نمی‌کنه).
@@ -406,7 +406,7 @@ erDiagram
 │   └── lib.js          # ابزارهای تلگرام، رمزنگاری و فرمت‌دهی
 ├── public/             # Mini App (index.html, app.js, app.css)
 ├── assets/             # تصاویر README (SVG انیمیشنی)
-├── migrations/         # مایگریشن‌های D1 (0001 تا 0012)
+├── migrations/         # مایگریشن‌های D1 (0001 تا 0013)
 ├── test/               # تست‌های واحد (node --test)
 ├── scripts/            # تست یکپارچه (smoke)
 ├── db-legacy/          # فایل‌های قدیمی اسکیما، فقط برای مرجع
