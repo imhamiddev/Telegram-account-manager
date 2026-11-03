@@ -267,33 +267,6 @@ export async function handleApi(req, env, url) {
       invalidate();
       return json({ ok: true });
     }
-    if (p === "/settings/value" && m === "POST") {
-      const spec = VALUES[body.key];
-      if (!spec) return json({ error: "Unknown setting" }, 400);
-      const value = String(body.value ?? "").trim();
-      if (!spec[1](value)) return json({ error: "Invalid value" }, 400);
-      await setSetting(env, body.key, value);
-      invalidate();
-      return json({ ok: true });
-    }
-    if (p === "/settings" && m === "POST") {
-      if (!(body.key in FLAGS)) return json({ error: "Unknown setting" }, 400);
-      await setSetting(env, body.key, body.value ? "1" : "0");
-      invalidate();
-      const cfg = await loadSettings(env);
-      const warning = body.key === "topics_enabled" && body.value && cfg.group_is_forum !== "1"
-        ? "Topics need a forum group. Enable Topics in the group's settings." : null;
-      return json({ ok: true, warning });
-    }
-    if (p === "/settings/appearance" && m === "POST") {
-      if (body.theme && !["system", "light", "dark"].includes(body.theme)) return json({ error: "Unknown theme" }, 400);
-      if (body.accent && !ACCENTS.includes(body.accent)) return json({ error: "Unknown accent" }, 400);
-      if (body.theme) await setSetting(env, "theme", body.theme);
-      if (body.accent) await setSetting(env, "accent", body.accent);
-      invalidate();
-      return json({ ok: true });
-    }
-
     if (p === "/autoreplies" && m === "GET") {
       const { results } = await env.DB.prepare(
         "SELECT keyword, reply, match_type, cooldown_min, media_type, media_url FROM autoreplies ORDER BY match_type, keyword").all();
