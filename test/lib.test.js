@@ -29,3 +29,10 @@ test("unlock token: valid, tampered, expired and wrong-key tokens", async () => 
   assert.equal(await checkUnlock(env, ""), false);
   assert.equal(await checkUnlock(env, undefined), false);
 });
+
+test("redact: the bot token never survives in an error text", () => {
+  const env = { BOT_TOKEN: "123:SECRET" };
+  assert.equal(redact(env, new Error("fetch failed for https://api.telegram.org/bot123:SECRET/sendMessage")), "Error: fetch failed for https://api.telegram.org/bot***/sendMessage");
+  assert.equal(redact({}, "plain"), "plain");
+  assert.equal(redact(env, null), "");
+});
