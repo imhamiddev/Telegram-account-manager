@@ -110,18 +110,28 @@ function deleteIncoming(env, m) {
     });
 }
 
+// Two messages from a brand-new chat can arrive together; without this both would create a topic and one would be orphaned.
+const topicCreations = new Map();
+
 async function getThread(env, st, gid, chatId, name) {
   if (st.cfg.topics_enabled !== "1" || st.cfg.group_is_forum !== "1") return null;
   const key = `${gid}:${chatId}`;
   if (st.topics.has(key)) return st.topics.get(key);
-  try {
-    const r = await call(env, "createForumTopic", { chat_id: gid, name: (name || "Unknown").slice(0, 100) });
-    st.topics.set(key, r.message_thread_id);
-    await env.DB.prepare("INSERT OR REPLACE INTO topics(group_id,chat_id,thread_id) VALUES(?,?,?)").bind(gid, chatId, r.message_thread_id).run();
-    return r.message_thread_id;
-  } catch {
-    return null; // bot can't manage topics → falls back to the General topic
-  }
+  if (topicCreations.has(key)) return topicCreations.get(key);
+  const creating = (async () => {
+    try {
+      const r = await call(env, "createForumTopic", { chat_id: gid, name: (name || "Unknown").slice(0, 100) });
+      st.topics.set(key, r.message_thread_id);
+      await env.DB.prepare("INSERT OR REPLACE INTO topics(group_id,chat_id,thread_id) VALUES(?,?,?)").bind(gid, chatId, r.message_thread_id).run();
+      return r.message_thread_id;
+    } catch {
+      return null; // bot can't manage topics → falls back to the General topic
+    } finally {
+      topicCreations.delete(key);
+    }
+  })();
+  topicCreations.set(key, creating);
+  return creating;
 }
 
 async function sendBody(env, gid, thread, p) {
