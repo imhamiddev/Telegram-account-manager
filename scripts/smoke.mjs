@@ -26,9 +26,9 @@ globalThis.fetch = async (u, o) => {
 // Fake Telegram on :8788 (the Worker is started with TG_API pointing here). Every method fails like an unauthorised token
 // unless a test enables it with fake.set(method), so the "Telegram unreachable" behaviour is still covered by default.
 const fake = {
-  calls: [], rules: new Map(),
+  calls: [], rules: new Map(), delays: new Map(),
   set(method, res = true) { this.rules.set(method, res); },
-  clear() { this.rules.clear(); this.calls.length = 0; },
+  clear() { this.rules.clear(); this.delays.clear(); this.calls.length = 0; },
   last(method) { return [...this.calls].reverse().find((c) => c.method === method); },
 };
 http.createServer(async (req, res) => {
@@ -36,6 +36,7 @@ http.createServer(async (req, res) => {
   const method = req.url.split("/").pop(); let body = {}; try { body = JSON.parse(raw); } catch { /* ignore */ }
   fake.calls.push({ method, body });
   const rule = fake.rules.get(method);
+  if (fake.delays.get(method)) await new Promise((r) => setTimeout(r, fake.delays.get(method))); // lets a test hold a reply open to provoke races
   res.writeHead(200, { "content-type": "application/json" });
   res.end(JSON.stringify(rule === true ? { ok: true, result: true } : rule || { ok: false, error_code: 401, description: "Unauthorized" }));
 }).listen(8788);
@@ -238,6 +239,17 @@ r = await api("POST", "/lock/disable", { pin: "0000" }); ok("disable needs right
 r = await api("POST", "/lock/disable", { pin: "4821" }); ok("disable with right pin", r.status === 200);
 unlock = null; r = await api("GET", "/overview"); ok("no pin -> open again", r.status === 200);
 r = await api("GET", "/settings"); ok("settings never leaks pin hash", !JSON.stringify(r.body).includes("pin_hash"));
+
+// ---- topic creation race: two messages from a new chat create one topic ----
+fake.clear();
+sql("INSERT OR REPLACE INTO settings(key,value) VALUES('group_is_forum','1');");
+await api("POST", "/settings", { key: "topics_enabled", value: true }); // also drops the cached state
+fake.set("createForumTopic", { ok: true, result: { message_thread_id: 7777 } }); fake.set("sendMessage"); fake.delays.set("createForumTopic", 600);
+await Promise.all([hook(msg(7001, "first")), hook(msg(7001, "second"))]); await wait(2500);
+ok("simultaneous first messages create exactly one topic", fake.calls.filter((c) => c.method === "createForumTopic").length === 1 && count("SELECT COUNT(*) n FROM topics WHERE chat_id=7001") === 1, String(fake.calls.filter((c) => c.method === "createForumTopic").length));
+await api("POST", "/settings", { key: "topics_enabled", value: false });
+sql("DELETE FROM topics WHERE chat_id=7001; DELETE FROM chats WHERE chat_id=7001; DELETE FROM settings WHERE key='group_is_forum';");
+fake.clear();
 
 // ---- daily housekeeping ----
 sql("DELETE FROM autoreply_hits; DELETE FROM flood; DELETE FROM daily_stats; INSERT INTO autoreply_hits(keyword,chat_id,last_at) VALUES('old',1,strftime('%s','now')-20*86400),('fresh',1,strftime('%s','now')-3600); INSERT INTO flood(chat_id,window_start,count) VALUES(1,strftime('%s','now')-3*86400,5),(2,strftime('%s','now'),1); INSERT INTO daily_stats(day,chat_id,msgs,replies,deleted) VALUES('2020-01-01',1,1,0,0),(date('now'),1,1,0,0);");
