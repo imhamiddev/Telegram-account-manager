@@ -70,3 +70,14 @@ test("initData: tampering, another user, stale or missing auth_date are rejected
   assert.equal(await verifyInitData(ENV, ok.replace("T", "X")), null, "tampered");
   assert.equal(await verifyInitData(ENV, ""), null);
 });
+
+test("withSecurityHeaders: adds CSP, nosniff and no-referrer without touching the body", async () => {
+  const r = withSecurityHeaders(new Response("hi", { headers: { "content-type": "text/html" } }));
+  assert.equal(r.headers.get("content-security-policy"), CSP);
+  assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(r.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(r.headers.get("content-type"), "text/html");
+  assert.equal(await r.text(), "hi");
+  assert.match(CSP, /script-src 'self' https:\/\/telegram\.org/);
+  assert.doesNotMatch(CSP, /script-src[^;]*unsafe/);
+});
