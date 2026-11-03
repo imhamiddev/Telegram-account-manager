@@ -277,10 +277,10 @@ export async function handleApi(req, env, url) {
     if (p === "/autoreplies/delete" && m === "POST") {
       const id = Number(body.id);
       if (!Number.isSafeInteger(id)) return json({ error: "Rule id is required" }, 400);
-      const row = await env.DB.prepare("SELECT keyword FROM autoreplies WHERE id=?").bind(id).first();
-      await env.DB.prepare("DELETE FROM autoreplies WHERE id=?").bind(id).run();
-      if (row && !(await env.DB.prepare("SELECT 1 FROM autoreplies WHERE keyword=?").bind(row.keyword).first()))
-        await env.DB.prepare("DELETE FROM autoreply_hits WHERE keyword=?").bind(row.keyword).run();
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM autoreplies WHERE id=?").bind(id),
+        env.DB.prepare("DELETE FROM autoreply_hits WHERE rule_id=?").bind(id),
+      ]);
       invalidate();
       return json({ ok: true });
     }

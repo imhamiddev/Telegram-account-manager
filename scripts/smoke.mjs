@@ -252,9 +252,9 @@ sql("DELETE FROM topics WHERE chat_id=7001; DELETE FROM chats WHERE chat_id=7001
 fake.clear();
 
 // ---- daily housekeeping ----
-sql("DELETE FROM autoreply_hits; DELETE FROM flood; DELETE FROM daily_stats; INSERT INTO autoreply_hits(keyword,chat_id,last_at) VALUES('old',1,strftime('%s','now')-20*86400),('fresh',1,strftime('%s','now')-3600); INSERT INTO flood(chat_id,window_start,count) VALUES(1,strftime('%s','now')-3*86400,5),(2,strftime('%s','now'),1); INSERT INTO daily_stats(day,chat_id,msgs,replies,deleted) VALUES('2020-01-01',1,1,0,0),(date('now'),1,1,0,0);");
+sql("DELETE FROM autoreply_hits; DELETE FROM flood; DELETE FROM daily_stats; INSERT INTO autoreply_hits(rule_id,chat_id,last_at) VALUES(901,1,strftime('%s','now')-20*86400),(902,1,strftime('%s','now')-3600); INSERT INTO flood(chat_id,window_start,count) VALUES(1,strftime('%s','now')-3*86400,5),(2,strftime('%s','now'),1); INSERT INTO daily_stats(day,chat_id,msgs,replies,deleted) VALUES('2020-01-01',1,1,0,0),(date('now'),1,1,0,0);");
 await fetch(BASE + "/__scheduled?cron=0+3+*+*+*"); await wait(2500);
-ok("housekeeping drops only expired cooldown records", count("SELECT COUNT(*) n FROM autoreply_hits WHERE keyword='old'") === 0 && count("SELECT COUNT(*) n FROM autoreply_hits WHERE keyword='fresh'") === 1);
+ok("housekeeping drops only expired cooldown records", count("SELECT COUNT(*) n FROM autoreply_hits WHERE rule_id=901") === 0 && count("SELECT COUNT(*) n FROM autoreply_hits WHERE rule_id=902") === 1);
 ok("housekeeping drops stale flood counters", count("SELECT COUNT(*) n FROM flood WHERE chat_id=1") === 0 && count("SELECT COUNT(*) n FROM flood WHERE chat_id=2") === 1);
 ok("housekeeping drops old daily stats", count("SELECT COUNT(*) n FROM daily_stats WHERE day='2020-01-01'") === 0 && count("SELECT COUNT(*) n FROM daily_stats WHERE day=date('now')") === 1);
 

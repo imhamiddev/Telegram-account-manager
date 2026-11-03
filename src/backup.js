@@ -178,9 +178,9 @@ async function sendAutoreply(env, m, rule) {
   if (rule.cooldown_min > 0) {
     const now = nowSec();
     const claim = await env.DB.prepare(
-      "INSERT INTO autoreply_hits(keyword,chat_id,last_at) VALUES(?,?,?) " +
-      "ON CONFLICT(keyword,chat_id) DO UPDATE SET last_at=excluded.last_at WHERE autoreply_hits.last_at <= ? RETURNING 1 AS ok")
-      .bind(rule.keyword, m.chat.id, now, cooldownCutoff(now, rule.cooldown_min)).first();
+      "INSERT INTO autoreply_hits(rule_id,chat_id,last_at) VALUES(?,?,?) " +
+      "ON CONFLICT(rule_id,chat_id) DO UPDATE SET last_at=excluded.last_at WHERE autoreply_hits.last_at <= ? RETURNING 1 AS ok")
+      .bind(rule.id, m.chat.id, now, cooldownCutoff(now, rule.cooldown_min)).first();
     if (!claim) return; // still cooling down for this person
   }
   const method = { photo: "sendPhoto", document: "sendDocument", video: "sendVideo" }[rule.media_type];
