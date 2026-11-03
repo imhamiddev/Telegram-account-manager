@@ -1,3 +1,10 @@
 node_modules/
 .wrangler/
 *.log
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+.DS_Store
+Thumbs.db
+coverage/
