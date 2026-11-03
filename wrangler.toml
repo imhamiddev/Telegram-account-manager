@@ -21,6 +21,6 @@ directory = "./public"
 binding = "ASSETS"
 run_worker_first = true
 
-# Every minute: send due follow-ups. Daily 03:00 UTC: clean inactive chats (only when enabled in Settings)
+# One trigger, every minute: sends due follow-ups. The 03:00 UTC tick also cleans inactive chats (only when enabled in Settings) and prunes old counters.
 [triggers]
-crons = ["* * * * *", "0 3 * * *"]
+crons = ["* * * * *"]
