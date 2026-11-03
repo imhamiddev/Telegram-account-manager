@@ -239,5 +239,16 @@ r = await api("POST", "/lock/disable", { pin: "4821" }); ok("disable with right 
 unlock = null; r = await api("GET", "/overview"); ok("no pin -> open again", r.status === 200);
 r = await api("GET", "/settings"); ok("settings never leaks pin hash", !JSON.stringify(r.body).includes("pin_hash"));
 
+// ---- hardening ----
+r = await api("POST", "/chats/pin", { pinned: true }); ok("pin without chat_id -> 400", r.status === 400, JSON.stringify(r.body));
+r = await api("POST", "/chats/mute", { chat_id: "", muted: true }); ok("mute with empty chat_id -> 400", r.status === 400, JSON.stringify(r.body));
+r = await api("POST", "/chats/rule", { chat_id: "abc", rule: "keep" }); ok("rule with garbage chat_id -> 400", r.status === 400, JSON.stringify(r.body));
+const nullBody = await fetch(BASE + "/api/settings", { method: "POST", headers: { Authorization: "tma " + initData, "content-type": "application/json" }, body: "null" });
+ok("JSON null body does not crash", nullBody.status === 400, String(nullBody.status));
+r = await api("POST", "/settings", { key: "backup_enabled", value: true, pad: "x".repeat(70000) }); ok("oversized body -> 413", r.status === 413, String(r.status));
+const noSecret = await fetch(BASE + "/", { method: "POST", body: "{}" }); ok("webhook without secret -> 403", noSecret.status === 403);
+const badSecret = await fetch(BASE + "/", { method: "POST", headers: { "X-Telegram-Bot-Api-Secret-Token": "nope" }, body: "{}" }); ok("webhook with wrong secret -> 403", badSecret.status === 403);
+const page = await fetch(BASE + "/"); ok("Mini App sends a CSP and nosniff", /script-src 'self'/.test(page.headers.get("content-security-policy") || "") && page.headers.get("x-content-type-options") === "nosniff");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
