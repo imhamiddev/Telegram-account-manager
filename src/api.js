@@ -267,53 +267,6 @@ export async function handleApi(req, env, url) {
       invalidate();
       return json({ ok: true });
     }
-    if (p === "/autoreplies" && m === "GET") {
-      const { results } = await env.DB.prepare(
-        "SELECT keyword, reply, match_type, cooldown_min, media_type, media_url FROM autoreplies ORDER BY match_type, keyword").all();
-      return json({ items: results });
-    }
-    if (p === "/autoreplies" && m === "POST") {
-      const match_type = isMatchType(body.match_type) ? body.match_type : "exact";
-      let keyword = String(body.keyword || "").trim();
-      const reply = String(body.reply || "").trim();
-      const cooldown_min = Math.floor(Number(body.cooldown_min) || 0);
-      const media_type = body.media_type ? String(body.media_type) : null;
-      const media_url = body.media_url ? String(body.media_url).trim() : null;
-
-      if (!keyword) return json({ error: "Keyword is required" }, 400);
-      if (!reply) return json({ error: "Reply text is required" }, 400);
-      if (match_type === "regex") {
-        if (!isSafeRegex(keyword)) return json({ error: "Invalid or unsafe regex (max 100 chars, no nested quantifiers or back-references)" }, 400);
-      } else {
-        keyword = keyword.toLowerCase();
-      }
-      if (keyword.length > 100) return json({ error: "Keyword is too long" }, 400);
-      if (cooldown_min < 0 || cooldown_min > 10080) return json({ error: "Cooldown must be between 0 and 10080 minutes" }, 400);
-      if (!!media_type !== !!media_url) return json({ error: "Media needs both a type and a URL" }, 400);
-      if (media_type) {
-        if (!["photo", "document", "video"].includes(media_type)) return json({ error: "Unknown media type" }, 400);
-        if (!/^https:\/\/\S+$/.test(media_url) || media_url.length > 500) return json({ error: "Media URL must be a direct https link" }, 400);
-      }
-      if (reply.length > (media_type ? 1024 : 4000)) return json({ error: media_type ? "Caption is too long (max 1024)" : "Reply is too long" }, 400);
-
-      await env.DB.prepare(
-        "INSERT INTO autoreplies(keyword,reply,match_type,cooldown_min,media_type,media_url) VALUES(?,?,?,?,?,?) " +
-        "ON CONFLICT(keyword) DO UPDATE SET reply=excluded.reply, match_type=excluded.match_type, cooldown_min=excluded.cooldown_min, " +
-        "media_type=excluded.media_type, media_url=excluded.media_url")
-        .bind(keyword, reply, match_type, cooldown_min, media_type, media_url).run();
-      invalidate();
-      return json({ ok: true });
-    }
-    if (p === "/autoreplies/delete" && m === "POST") {
-      const keyword = String(body.keyword || "").trim(); // exactly as stored (regex patterns are case-sensitive)
-      if (!keyword) return json({ error: "Keyword is required" }, 400);
-      await env.DB.batch([
-        env.DB.prepare("DELETE FROM autoreplies WHERE keyword=?").bind(keyword),
-        env.DB.prepare("DELETE FROM autoreply_hits WHERE keyword=?").bind(keyword),
-      ]);
-      invalidate();
-      return json({ ok: true });
-    }
     if (p === "/stats" && m === "GET") {
       const cfg = await loadSettings(env);
       const n = [7, 14, 30].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 14;
