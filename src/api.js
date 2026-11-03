@@ -1,7 +1,7 @@
 import { verifyInitData, loadSettings, setSetting, tg, tgStrict, TgError, RateLimit, nowSec, hashPin, verifyPin, signUnlock, checkUnlock } from "./lib.js";
 import { invalidate, logError } from "./backup.js";
 import { deleteChat, runCleanup } from "./chats.js";
-import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS } from "./rules.js";
+import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS, MAX_COOLDOWN_MIN } from "./rules.js";
 
 const MAX_BODY = 64 * 1024;
 const json = (data, status = 200) =>
@@ -237,7 +237,7 @@ export async function handleApi(req, env, url) {
         keyword = keyword.toLowerCase();
       }
       if (keyword.length > 100) return json({ error: "Keyword is too long" }, 400);
-      if (cooldown_min < 0 || cooldown_min > 10080) return json({ error: "Cooldown must be between 0 and 10080 minutes" }, 400);
+      if (cooldown_min < 0 || cooldown_min > MAX_COOLDOWN_MIN) return json({ error: `Cooldown must be between 0 and ${MAX_COOLDOWN_MIN} minutes` }, 400);
       if (!!media_type !== !!media_url) return json({ error: "Media needs both a type and a URL" }, 400);
       if (media_type) {
         if (!["photo", "document", "video"].includes(media_type)) return json({ error: "Unknown media type" }, 400);
@@ -289,14 +289,11 @@ export async function handleApi(req, env, url) {
       const n = [7, 14, 30].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 14;
       const days = lastDays(n, cfg.tz || "Asia/Tehran");
       const since = days[0];
-      // keep the table small: counters older than ~4 months are not useful
-      const prune = lastDays(120, cfg.tz || "Asia/Tehran")[0];
       const [perDay, top, tot] = await env.DB.batch([
         env.DB.prepare("SELECT day, SUM(msgs) msgs, SUM(replies) replies, SUM(deleted) deleted FROM daily_stats WHERE day >= ? GROUP BY day").bind(since),
         env.DB.prepare("SELECT s.chat_id, c.name, c.username, SUM(s.msgs) msgs FROM daily_stats s LEFT JOIN chats c ON c.chat_id = s.chat_id WHERE s.day >= ? GROUP BY s.chat_id ORDER BY msgs DESC LIMIT 5").bind(since),
         env.DB.prepare("SELECT COALESCE(SUM(msgs),0) msgs, COALESCE(SUM(replies),0) replies, COALESCE(SUM(deleted),0) deleted FROM daily_stats WHERE day >= ?").bind(since),
       ]);
-      await env.DB.prepare("DELETE FROM daily_stats WHERE day < ?").bind(prune).run().catch(() => {}); // awaited: un-awaited work can be cancelled once the response is sent
       const byDay = new Map(perDay.results.map((r) => [r.day, r]));
       return json({
         days: days.map((day) => ({ day, msgs: byDay.get(day)?.msgs ?? 0, replies: byDay.get(day)?.replies ?? 0, deleted: byDay.get(day)?.deleted ?? 0 })),

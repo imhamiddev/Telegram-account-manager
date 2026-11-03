@@ -163,3 +163,13 @@ export function registerPinFailure(fails, now) {
   const n = (Number(fails) || 0) + 1;
   return n >= PIN_MAX_FAILS ? { fails: 0, lockUntil: now + PIN_LOCKOUT_SEC } : { fails: n, lockUntil: 0 };
 }
+
+// ---------- housekeeping ----------
+/** Longest auto-reply cooldown a rule may have (7 days), in minutes. */
+export const MAX_COOLDOWN_MIN = 10080;
+/** A cooldown record older than the longest cooldown can never block anything again (+1 day of slack). */
+export const HITS_RETENTION_SEC = (MAX_COOLDOWN_MIN / 1440 + 1) * 86400;
+/** Flood counters only matter inside their window (max 10 minutes); a day is plenty. */
+export const FLOOD_RETENTION_SEC = 86400;
+/** Daily counters older than ~4 months are not useful. */
+export const STATS_RETENTION_DAYS = 120;
