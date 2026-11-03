@@ -281,3 +281,12 @@ test("regex safety: a pattern that passes cannot hang on hostile input", () => {
   for (const p of ["^(hi|hello)+x", "(ab)+c", "^\\w+@\\w+$"]) if (isSafeRegex(p)) new RegExp(p, "iu").test("a".repeat(40) + "!");
   assert.ok(Date.now() - t < 200);
 });
+
+test("cron: the daily jobs run only in the 03:00 UTC tick", async () => {
+  const { isDailyRun } = await import("../src/index.js");
+  const at = (iso) => ({ cron: "* * * * *", scheduledTime: Date.parse(iso) });
+  assert.equal(isDailyRun(at("2026-11-03T03:00:00Z")), true);
+  assert.equal(isDailyRun(at("2026-11-03T03:01:00Z")), false);
+  assert.equal(isDailyRun(at("2026-11-03T15:00:00Z")), false);
+  assert.equal(isDailyRun({ cron: "0 3 * * *", scheduledTime: 0 }), true);
+});
