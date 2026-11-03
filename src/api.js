@@ -1,4 +1,4 @@
-import { verifyInitData, loadSettings, setSetting, tg, tgStrict, nowSec, hashPin, verifyPin, signUnlock, checkUnlock } from "./lib.js";
+import { verifyInitData, loadSettings, setSetting, tg, tgStrict, TgError, RateLimit, nowSec, hashPin, verifyPin, signUnlock, checkUnlock } from "./lib.js";
 import { invalidate, logError } from "./backup.js";
 import { deleteChat, runCleanup } from "./chats.js";
 import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, registerPinFailure, PIN_MAX_FAILS } from "./rules.js";
@@ -371,6 +371,8 @@ export async function handleApi(req, env, url) {
     return json({ error: "Not found" }, 404);
   } catch (e) {
     await logError(env, "api", `${m} ${p}: ${e.message}`);
-    return json({ error: e.message || "Server error" }, 500);
+    // Telegram's own descriptions are safe and useful in the console; anything else (D1, runtime) stays in the error log only.
+    const safe = e instanceof TgError || e instanceof RateLimit;
+    return json({ error: safe ? e.message : "Server error" }, 500);
   }
 }
