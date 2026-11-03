@@ -239,6 +239,13 @@ r = await api("POST", "/lock/disable", { pin: "4821" }); ok("disable with right 
 unlock = null; r = await api("GET", "/overview"); ok("no pin -> open again", r.status === 200);
 r = await api("GET", "/settings"); ok("settings never leaks pin hash", !JSON.stringify(r.body).includes("pin_hash"));
 
+// ---- daily housekeeping ----
+sql("DELETE FROM autoreply_hits; DELETE FROM flood; DELETE FROM daily_stats; INSERT INTO autoreply_hits(keyword,chat_id,last_at) VALUES('old',1,strftime('%s','now')-20*86400),('fresh',1,strftime('%s','now')-3600); INSERT INTO flood(chat_id,window_start,count) VALUES(1,strftime('%s','now')-3*86400,5),(2,strftime('%s','now'),1); INSERT INTO daily_stats(day,chat_id,msgs,replies,deleted) VALUES('2020-01-01',1,1,0,0),(date('now'),1,1,0,0);");
+await fetch(BASE + "/__scheduled?cron=0+3+*+*+*"); await wait(2500);
+ok("housekeeping drops only expired cooldown records", count("SELECT COUNT(*) n FROM autoreply_hits WHERE keyword='old'") === 0 && count("SELECT COUNT(*) n FROM autoreply_hits WHERE keyword='fresh'") === 1);
+ok("housekeeping drops stale flood counters", count("SELECT COUNT(*) n FROM flood WHERE chat_id=1") === 0 && count("SELECT COUNT(*) n FROM flood WHERE chat_id=2") === 1);
+ok("housekeeping drops old daily stats", count("SELECT COUNT(*) n FROM daily_stats WHERE day='2020-01-01'") === 0 && count("SELECT COUNT(*) n FROM daily_stats WHERE day=date('now')") === 1);
+
 // ---- hardening ----
 r = await api("POST", "/chats/pin", { pinned: true }); ok("pin without chat_id -> 400", r.status === 400, JSON.stringify(r.body));
 r = await api("POST", "/chats/mute", { chat_id: "", muted: true }); ok("mute with empty chat_id -> 400", r.status === 400, JSON.stringify(r.body));
