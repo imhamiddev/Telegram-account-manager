@@ -141,3 +141,18 @@ export async function checkUnlock(env, token) {
   if (!exp || !sig || !(Number(exp) > nowSec())) return false;
   return safeEqual(await unlockMac(env, exp), sig);
 }
+
+// ---- Response hardening ----
+// The Mini App only needs its own files plus Telegram's WebApp script. (style-src allows inline because the UI sets style attributes.)
+// No frame-ancestors rule on purpose: Telegram clients embed the Mini App and their origins vary.
+export const CSP = "default-src 'none'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'";
+export const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Content-Security-Policy": CSP,
+};
+export function withSecurityHeaders(res) {
+  const r = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) r.headers.set(k, v);
+  return r;
+}

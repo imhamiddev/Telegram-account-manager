@@ -1,4 +1,4 @@
-import { tg, setSetting, loadSettings, safeEqual } from "./lib.js";
+import { tg, setSetting, loadSettings, safeEqual, withSecurityHeaders } from "./lib.js";
 import { invalidate, onBusinessMessage, onDeleted, logError } from "./backup.js";
 import { handleApi } from "./api.js";
 import { runCleanup } from "./chats.js";
@@ -69,6 +69,6 @@ export default {
       ctx.waitUntil(handle(update, env, url.origin).catch((e) => { console.error(e); return logError(env, "webhook", e.message); }));
       return new Response("ok"); // answer Telegram immediately, work continues in the background
     }
-    return env.ASSETS.fetch(req); // Mini App
+    return withSecurityHeaders(await env.ASSETS.fetch(req)); // Mini App
   },
 };

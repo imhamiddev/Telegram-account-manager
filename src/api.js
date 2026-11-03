@@ -5,7 +5,7 @@ import { isSafeRegex, isMatchType, lastDays, isValidPin, lockoutRemaining, regis
 
 const MAX_BODY = 64 * 1024;
 const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 
 const FLAGS = { backup_enabled: "1", topics_enabled: "0", close_dm: "0", sched_enabled: "0", sched_close_dm: "1", sched_autoreply: "1", spam_enabled: "0", flood_enabled: "0", cleanup_enabled: "0" };
 const flagsOf = (cfg) => Object.fromEntries(Object.entries(FLAGS).map(([k, d]) => [k, (cfg[k] ?? d) === "1"]));
