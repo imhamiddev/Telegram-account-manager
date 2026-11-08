@@ -40,7 +40,7 @@ It runs entirely on **Cloudflare Workers + D1**. It is serverless, has no server
 | 🗂️ | **Message backup** | Every incoming DM is forwarded to your backup group (`/setgr`) |
 | ✏️ | **Edits & deletions** | Edited messages are re-sent with a label; deleted messages produce a notice |
 | 🧵 | **Topic per sender** | Optional: one forum topic per person, so the group stays organised |
-| 🔒 | **Close DM** | One switch: incoming private messages are deleted for **both sides**, instantly |
+| 🔒 | **Close DM** | Master switch: incoming private messages are deleted for **both sides**, instantly. By default only for chats you mark **Always delete** (or switch to "everyone except whitelist") |
 | 🛡️ | **Whitelist & modes** | Mark chats *Never delete* (family, VIP clients), or flip the mode to *only chats I pick* |
 | 🕒 | **Schedule** | Run Close DM and auto-reply only during chosen hours (overnight windows and time zones supported) |
 | 💬 | **Smart auto-reply** | Exact word, *contains* or **regex** matching, per-person **cooldown**, optional photo/file/video |

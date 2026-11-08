@@ -20,7 +20,7 @@ const validTz = (v) => { try { new Intl.DateTimeFormat("en", { timeZone: v }); r
 
 // Non-boolean settings: key -> [default, validator]. Anything not listed here cannot be written.
 const VALUES = {
-  close_dm_mode: ["all", (v) => ["all", "selected"].includes(v)],
+  close_dm_mode: ["selected", (v) => ["all", "selected"].includes(v)],
   sched_start: ["22:00", (v) => HM.test(v)],
   sched_end: ["07:00", (v) => HM.test(v)],
   tz: ["Asia/Tehran", validTz],

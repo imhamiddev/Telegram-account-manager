@@ -356,7 +356,7 @@
             h("div", { class: "meta" }, `${c.username ? "@" + c.username + " · " : ""}active ${fmtDate(c.last_at || c.added)}`),
             (c.label || c.muted) ? h("div", { class: "badges" }, c.label ? Badge("🏷 " + c.label, "outline") : null, c.muted ? Badge("Not backed up", "warning") : null) : null,
             c.note ? h("div", { class: "note" }, c.note) : null),
-          Select([["default", "Close DM: default"], ["keep", "🛡 Never delete"], ["close", "🗑 Always delete"]], c.dm_rule || "default", async (rule) => {
+          Select([["default", "Close DM: follow global"], ["keep", "🛡 Never delete"], ["close", "🗑 Always delete"]], c.dm_rule || "default", async (rule) => {
             await api("/chats/rule", { method: "POST", body: { chat_id: c.chat_id, rule } });
             c.dm_rule = rule;
             toast(rule === "keep" ? "Whitelisted: never auto-deleted" : rule === "close" ? "Always deleted when Close DM is on" : "Follows the global rule");
@@ -750,9 +750,9 @@
       Card("Backup", d.group ? `Group: ${d.group.title}` : "No group set. Send /setgr inside the backup group.", h("div", { class: "list" },
         toggle("backup_enabled", "Forward messages", "Turn off to pause forwarding"),
         toggle("topics_enabled", "Topic per sender", "Requires a forum group with Manage Topics"),
-        toggle("close_dm", "Close DM (auto-delete)", "Instantly deletes every incoming private message for both sides"),
-        selectRow("close_dm_mode", "Close DM applies to", "Whitelist chats from the Chats tab either way",
-          [["all", "Everyone except whitelist"], ["selected", "Only chats I pick"]])), { flush: true }),
+        toggle("close_dm", "Close DM (auto-delete)", "Master switch. Who gets deleted is chosen below and per chat in the Chats tab"),
+        selectRow("close_dm_mode", "Close DM applies to", "Only chats I pick: set \"Always delete\" on a chat in the Chats tab",
+          [["selected", "Only chats I pick"], ["all", "Everyone except whitelist"]])), { flush: true }),
       scheduleCard(d, toggle),
       spamCard(d, toggle),
       cleanupCard(d, toggle),

@@ -14,8 +14,9 @@ test("Close DM: mode 'all' deletes everyone except whitelisted chats", () => {
   assert.equal(shouldCloseDm(cfg, { dm_rule: "keep" }), false);
 });
 
-test("Close DM: mode defaults to 'all' when unset", () => {
-  assert.equal(shouldCloseDm({ close_dm: "1" }, { dm_rule: "default" }), true);
+test("Close DM: mode defaults to 'selected' when unset", () => {
+  assert.equal(shouldCloseDm({ close_dm: "1" }, { dm_rule: "default" }), false);
+  assert.equal(shouldCloseDm({ close_dm: "1" }, { dm_rule: "close" }), true);
 });
 
 test("Close DM: mode 'selected' deletes only chats marked 'close'", () => {
