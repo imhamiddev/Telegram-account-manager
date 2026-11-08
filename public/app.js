@@ -392,14 +392,14 @@
     function confirmDelete(c) {
       openSheet((close) => {
         const body = h("div", { class: "stack" });
-        const done = () => { close(); toast("Topic and message count deleted"); reload(); };
+        const done = () => { close(); toast("Topic deleted"); reload(); };
         const ask = (force, note) => body.replaceChildren(
-          h("h3", { class: "card-title" }, force ? "Continue anyway?" : "Delete topic and stats?"),
-          h("p", { class: "card-description" }, note || `The topic of "${c.name || "Unknown"}" in the backup group is deleted with every message inside it, and its message count is erased from the database. The person stays in your list. If they write again, a new topic is created.`),
-          Btn(force ? "Reset counters only" : "Delete topic and stats", { variant: "destructive", block: true, onclick: async () => {
+          h("h3", { class: "card-title" }, force ? "Continue anyway?" : "Delete topic?"),
+          h("p", { class: "card-description" }, note || `The topic of "${c.name || "Unknown"}" in the backup group is deleted with every message inside it. The person and their message count stay in your list. If they write again, a new topic is created.`),
+          Btn(force ? "Continue without deleting the topic" : "Delete topic", { variant: "destructive", block: true, onclick: async () => {
             try { await api("/chats/delete", { method: "POST", body: { chat_id: c.chat_id, force } }); done(); }
             catch (e) {
-              if (e.data?.topic_failed && !force) return ask(true, `${e.message}. Make sure the bot is an admin with "Delete messages". You can reset the counters anyway, then delete the topic by hand.`);
+              if (e.data?.topic_failed && !force) return ask(true, `${e.message}. Make sure the bot is an admin with "Delete messages". You can delete the topic by hand in the group.`);
               throw e;
             }
           } }),
@@ -436,9 +436,9 @@
           drawBulk(); reload();
         };
         body.replaceChildren(
-          h("h3", { class: "card-title" }, `Delete ${ids.length} topic${ids.length === 1 ? "" : "s"} and stats?`),
-          h("p", { class: "card-description" }, "Their topics in the backup group are deleted with every message inside, and their message counts are erased. The people stay in your list. Topics that can't be deleted stay selected so you can retry."),
-          Btn("Delete topics and stats", { variant: "destructive", block: true, onclick: () => run(false) }),
+          h("h3", { class: "card-title" }, `Delete ${ids.length} topic${ids.length === 1 ? "" : "s"}?`),
+          h("p", { class: "card-description" }, "Their topics in the backup group are deleted with every message inside. The people and their message counts stay in your list. Topics that can't be deleted stay selected so you can retry."),
+          Btn("Delete topics", { variant: "destructive", block: true, onclick: () => run(false) }),
           Btn("Cancel", { variant: "outline", block: true, onclick: () => close() }));
         return body;
       });

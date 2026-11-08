@@ -9,15 +9,16 @@ function fakeEnv() {
   return { sql, env: { DB: { prepare: (q) => { sql.push(q); return stmt(q); }, batch: async (list) => list.map((s) => s.q) } } };
 }
 
-test("deleteChat with keep: erases topic + counters but keeps the chat row", async () => {
+test("deleteChat with keep: deletes only the topic rows; chat and counters stay", async () => {
   const { env, sql } = fakeEnv();
   const r = await deleteChat(env, 42, { keep: true });
   assert.equal(r.ok, true);
   assert.equal(r.kept, true);
   const all = sql.join("\n");
   assert.match(all, /DELETE FROM topics/);
-  assert.match(all, /DELETE FROM daily_stats/);
   assert.doesNotMatch(all, /DELETE FROM chats/);
+  assert.doesNotMatch(all, /DELETE FROM daily_stats/);
+  assert.doesNotMatch(all, /DELETE FROM flood/);
 });
 
 test("deleteChat without keep: removes the chat row too (auto cleanup)", async () => {
