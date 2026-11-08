@@ -240,6 +240,9 @@ export async function onBusinessMessage(env, m, edited) {
     st.chats.set(m.chat.id, { chat_id: m.chat.id, name, username, muted: 0, last_at: now });
     tasks.push(env.DB.prepare("INSERT OR IGNORE INTO chats(chat_id,name,username,muted,added,last_at) VALUES(?,?,?,0,?,?)")
       .bind(m.chat.id, name, username, now, now).run());
+  } else if (/^User \d+$/.test(chat.name || "") && name) { // added by id: fill in the real name once the person writes
+    chat.name = name; chat.username = username; chat.last_at = now;
+    tasks.push(env.DB.prepare("UPDATE chats SET name=?, username=?, last_at=? WHERE chat_id=?").bind(name, username, now, m.chat.id).run());
   } else if (now - (chat.last_at || 0) > 600) { // last activity, written at most every 10 minutes per chat
     chat.last_at = now;
     tasks.push(env.DB.prepare("UPDATE chats SET last_at=? WHERE chat_id=?").bind(now, m.chat.id).run());

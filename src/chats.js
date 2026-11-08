@@ -3,9 +3,11 @@ import { invalidate, notifyOwner } from "./backup.js";
 
 const GONE = /thread not found|topic.*(not found|invalid|deleted)/i;
 
-// Removes a chat completely: its forum topic in the backup group (with every message in it) and all its rows.
+// Removes a chat's forum topic in the backup group (with every message in it).
+// By default the chat itself and all its rows go too. With `keep` the chat stays in the list (name, label, note, pin,
+// Close DM rule), and only its topic and its message counters are erased; a new topic is created on its next message.
 // Without `force`, a topic Telegram refuses to delete (e.g. missing "Delete messages" right) keeps the chat so nothing is orphaned.
-export async function deleteChat(env, chatId, { force = false } = {}) {
+export async function deleteChat(env, chatId, { force = false, keep = false } = {}) {
   const { results: topics } = await env.DB.prepare("SELECT group_id, thread_id FROM topics WHERE chat_id=?").bind(chatId).all();
   const failed = [];
   for (const t of topics) {
@@ -18,6 +20,15 @@ export async function deleteChat(env, chatId, { force = false } = {}) {
     if (!r.ok && !GONE.test(r.description || "")) failed.push(r.description || "Telegram error");
   }
   if (failed.length && !force) return { ok: false, topic_failed: true, error: `Couldn't delete the topic: ${failed[0]}` };
+  if (keep) {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM topics WHERE chat_id=?").bind(chatId),
+      env.DB.prepare("DELETE FROM daily_stats WHERE chat_id=?").bind(chatId),
+      env.DB.prepare("DELETE FROM flood WHERE chat_id=?").bind(chatId),
+    ]);
+    invalidate();
+    return { ok: true, kept: true, topics_deleted: topics.length - failed.length, topic_failed: failed.length > 0 };
+  }
   await env.DB.batch([
     env.DB.prepare("DELETE FROM topics WHERE chat_id=?").bind(chatId),
     env.DB.prepare("DELETE FROM autoreply_hits WHERE chat_id=?").bind(chatId),

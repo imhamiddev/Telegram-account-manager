@@ -119,6 +119,22 @@ export async function handleApi(req, env, url) {
         ? (await env.DB.prepare("SELECT label, COUNT(*) n FROM chats WHERE label IS NOT NULL GROUP BY label ORDER BY label").all()).results : undefined;
       return json({ items: results, labels, next_offset: offset + results.length, has_more: results.length === limit });
     }
+    // Add a chat by its numeric Telegram id (it is also created automatically on the first message).
+    if (p === "/chats/add" && m === "POST") {
+      const raw = String(body.chat_id ?? "").trim();
+      if (!/^\d{1,15}$/.test(raw) || Number(raw) <= 0) return json({ error: "Enter a numeric user id (digits only)" }, 400);
+      const id = Number(raw);
+      if (await env.DB.prepare("SELECT 1 FROM chats WHERE chat_id=?").bind(id).first()) return json({ error: "This id is already in the list" }, 409);
+      // Best effort: Telegram only answers for users the bot has met, so fall back to a placeholder name.
+      const info = await tg(env, "getChat", { chat_id: id }).catch(() => null);
+      const c = info?.ok ? info.result : null;
+      const name = (c && ([c.first_name, c.last_name].filter(Boolean).join(" ") || c.title)) || `User ${id}`;
+      const now = nowSec();
+      await env.DB.prepare("INSERT OR IGNORE INTO chats(chat_id,name,username,muted,added,last_at) VALUES(?,?,?,0,?,?)")
+        .bind(id, String(name).slice(0, 100), c?.username || null, now, now).run();
+      invalidate();
+      return json({ ok: true, chat_id: id, name });
+    }
     if (p === "/chats/pin" && m === "POST") {
       const id = chatIdOf(body);
       if (id === null) return json({ error: "Invalid chat" }, 400);
@@ -148,7 +164,7 @@ export async function handleApi(req, env, url) {
     if (p === "/chats/delete" && m === "POST") {
       const chatId = chatIdOf(body);
       if (chatId === null) return json({ error: "Invalid chat" }, 400);
-      const r = await deleteChat(env, chatId, { force: !!body.force });
+      const r = await deleteChat(env, chatId, { force: !!body.force, keep: true });
       if (!r.ok) return json({ error: r.error, topic_failed: true }, 409);
       return json(r);
     }
@@ -159,7 +175,7 @@ export async function handleApi(req, env, url) {
       let deleted = 0;
       const failed = [];
       for (const id of ids) {
-        const r = await deleteChat(env, id, { force: !!body.force });
+        const r = await deleteChat(env, id, { force: !!body.force, keep: true });
         if (r.ok) deleted++; else failed.push({ chat_id: id, error: r.error });
       }
       return json({ ok: true, deleted, failed });

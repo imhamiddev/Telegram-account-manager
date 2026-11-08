@@ -392,14 +392,14 @@
     function confirmDelete(c) {
       openSheet((close) => {
         const body = h("div", { class: "stack" });
-        const done = () => { close(); toast("Chat deleted"); reload(); };
+        const done = () => { close(); toast("Topic and message count deleted"); reload(); };
         const ask = (force, note) => body.replaceChildren(
-          h("h3", { class: "card-title" }, force ? "Remove anyway?" : "Delete this chat?"),
-          h("p", { class: "card-description" }, note || `"${c.name || "Unknown"}" is removed from the list and its topic in the backup group is deleted with every message inside it. Its stats are erased too. If this person writes again, a new topic is created.`),
-          Btn(force ? "Remove from database only" : "Delete everything", { variant: "destructive", block: true, onclick: async () => {
+          h("h3", { class: "card-title" }, force ? "Continue anyway?" : "Delete topic and stats?"),
+          h("p", { class: "card-description" }, note || `The topic of "${c.name || "Unknown"}" in the backup group is deleted with every message inside it, and its message count is erased from the database. The person stays in your list. If they write again, a new topic is created.`),
+          Btn(force ? "Reset counters only" : "Delete topic and stats", { variant: "destructive", block: true, onclick: async () => {
             try { await api("/chats/delete", { method: "POST", body: { chat_id: c.chat_id, force } }); done(); }
             catch (e) {
-              if (e.data?.topic_failed && !force) return ask(true, `${e.message}. Make sure the bot is an admin with "Delete messages". You can remove the chat from the database anyway, then delete the topic by hand.`);
+              if (e.data?.topic_failed && !force) return ask(true, `${e.message}. Make sure the bot is an admin with "Delete messages". You can reset the counters anyway, then delete the topic by hand.`);
               throw e;
             }
           } }),
@@ -431,26 +431,45 @@
           }
           picked.clear(); failed.forEach((f) => picked.add(f.chat_id));
           close();
-          if (failed.length) toast(`${deleted} deleted, ${failed.length} failed: ${failed[0].error}`, "error"); else toast(`${deleted} chats deleted`);
+          if (failed.length) toast(`${deleted} deleted, ${failed.length} failed: ${failed[0].error}`, "error"); else toast(`${deleted} topic${deleted === 1 ? "" : "s"} deleted`);
           if (!failed.length) selecting = false;
           drawBulk(); reload();
         };
         body.replaceChildren(
-          h("h3", { class: "card-title" }, `Delete ${ids.length} chat${ids.length === 1 ? "" : "s"}?`),
-          h("p", { class: "card-description" }, "Their topics in the backup group are deleted with every message inside, and their stats are erased. Chats whose topic can't be deleted stay selected so you can retry."),
-          Btn("Delete everything", { variant: "destructive", block: true, onclick: () => run(false) }),
+          h("h3", { class: "card-title" }, `Delete ${ids.length} topic${ids.length === 1 ? "" : "s"} and stats?`),
+          h("p", { class: "card-description" }, "Their topics in the backup group are deleted with every message inside, and their message counts are erased. The people stay in your list. Topics that can't be deleted stay selected so you can retry."),
+          Btn("Delete topics and stats", { variant: "destructive", block: true, onclick: () => run(false) }),
           Btn("Cancel", { variant: "outline", block: true, onclick: () => close() }));
         return body;
       });
     }
+    // Add a person by numeric Telegram id.
+    function addById() {
+      openSheet((close) => {
+        const idInput = h("input", { class: "input", inputmode: "numeric", pattern: "[0-9]*", placeholder: "e.g. 123456789", autocomplete: "off" });
+        const submit = async () => {
+          const chat_id = idInput.value.trim();
+          if (!/^\d+$/.test(chat_id)) return toast("Enter digits only", "error");
+          const r = await api("/chats/add", { method: "POST", body: { chat_id } });
+          toast(`Added ${r.name}`); close(); reload();
+        };
+        idInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit().catch((err) => toast(err.message, "error")); });
+        return h("div", { class: "stack" },
+          h("h3", { class: "card-title" }, "Add by numeric ID"),
+          h("p", { class: "card-description" }, "Enter the person's numeric Telegram user id. Their name fills in automatically once they write."),
+          Field("User ID", idInput),
+          Btn("Add", { block: true, onclick: submit }));
+      });
+    }
     function drawFilters() {
       filters.replaceChildren(
+        Btn("Add", { variant: "outline", size: "sm", ic: "plus", onclick: () => addById() }),
         Btn(selecting ? "Cancel" : "Select", { variant: "outline", size: "sm", onclick: () => { selecting = !selecting; picked.clear(); drawFilters(); drawBulk(); redraw(); } }),
         Select([["recent", "Last active"], ["added", "Newest first"], ["name", "Name A–Z"]], sort, (v) => { sort = v; reload(); }),
         labels.length ? Select([["", "All labels"], ...labels.map((l) => [l.label, `${l.label} (${l.n})`])], label, (v) => { label = v; reload(); }) : null);
     }
     function redraw() {
-      list.replaceChildren(...(items.length ? items.map(rowFor) : (loading ? [] : [Empty(q || label ? "No chats match." : "No chats yet. They appear after their first message.")])));
+      list.replaceChildren(...(items.length ? items.map(rowFor) : (loading ? [] : [Empty(q || label ? "No chats match." : "No chats yet. They appear after their first message, or add one by ID.")])));
       sentinel.style.display = hasMore ? "flex" : "none";
     }
     async function loadMore() {
